@@ -8,7 +8,25 @@
 
 ## 📋 Tổng quan
 
-TrackSpace Backend là hệ thống API monolithic được xây dựng bằng **Spring Boot** để hỗ trợ quản lý dự án, theo dõi yêu cầu và giám sát tiến độ cho ngành Kỹ Thuật Phần Mềm.
+**TrackSpace Backend** là hệ thống RESTful API được xây dựng bằng **Spring Boot 3.2.0** để hỗ trợ giảng viên theo dõi và quản lý dự án phần mềm của sinh viên.
+
+Hệ thống tích hợp với **Jira** (quản lý tasks) và **GitHub** (theo dõi commits) để tự động đồng bộ dữ liệu, tính toán contribution metrics của từng thành viên trong nhóm, và hỗ trợ tạo tài liệu **SRS** tự động bằng AI.
+
+### 🎯 Tính năng chính
+
+- **Quản lý lớp học**: Lecturer tạo lớp, import danh sách sinh viên (Excel), tạo nhóm dự án
+- **Tích hợp Jira**: Team Leader kết nối Jira workspace, đồng bộ Sprints và Issues
+- **Tích hợp GitHub**: Team Leader kết nối GitHub repository, đồng bộ commits và code changes
+- **Phân tích đóng góp**: Tự động tính toán task completion rate, commit count, lines changed
+- **AI SRS Generation**: Tạo tài liệu SRS từ Project Info và Jira Issues sử dụng OpenAI
+- **Thông báo**: Email và in-app notifications cho các sự kiện quan trọng
+
+### 👥 Actors
+
+- **Admin**: Quản lý users, assign roles
+- **Lecturer**: Tạo lớp học, quản lý nhóm, xem báo cáo đóng góp, xem/tải SRS
+- **Student - Team Leader**: Kết nối Jira/GitHub, quản lý project info, generate SRS
+- **Student - Member**: Xem thông tin project và contribution của bản thân
 
 ## 🏗️ Kiến trúc
 
