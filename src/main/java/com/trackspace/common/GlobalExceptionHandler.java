@@ -2,6 +2,7 @@ package com.trackspace.common;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -52,6 +53,20 @@ public class GlobalExceptionHandler {
         errorDetails.put("path", request.getDescription(false).replace("uri=", ""));
 
         return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleDisabledException(
+            DisabledException ex, WebRequest request) {
+
+        Map<String, Object> errorDetails = new HashMap<>();
+        errorDetails.put("timestamp", LocalDateTime.now());
+        errorDetails.put("message", "Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên");
+        errorDetails.put("path", request.getDescription(false).replace("uri=", ""));
+
+        return new ResponseEntity<>(
+                ApiResponse.error("Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên"),
+                HttpStatus.FORBIDDEN);
     }
 
     @ExceptionHandler(Exception.class)
