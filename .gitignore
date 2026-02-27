@@ -63,3 +63,6 @@ application-local.properties
 
 # Lombok
 lombok.config
+
+# properties
+src/main/resources/.properties
