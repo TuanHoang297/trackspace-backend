@@ -6,7 +6,6 @@ import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -50,17 +49,14 @@ public class Commit {
     @Column(name = "commit_date", nullable = false)
     private Instant commitDate;
 
-    @ColumnDefault("'0'")
     @Column(name = "files_changed", columnDefinition = "int UNSIGNED")
-    private Long filesChanged;
+    private Integer filesChanged;
 
-    @ColumnDefault("'0'")
     @Column(name = "lines_added", columnDefinition = "int UNSIGNED")
-    private Long linesAdded;
+    private Integer linesAdded;
 
-    @ColumnDefault("'0'")
     @Column(name = "lines_deleted", columnDefinition = "int UNSIGNED")
-    private Long linesDeleted;
+    private Integer linesDeleted;
 
     @Size(max = 100)
     @Column(name = "branch_name", length = 100)
@@ -69,9 +65,11 @@ public class Commit {
     @Column(name = "linked_issue_id")
     private Integer linkedIssueId;
 
-    @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at")
     private Instant createdAt;
 
-
+    @PrePersist
+    protected void onCreate() {
+        createdAt = Instant.now();
+    }
 }

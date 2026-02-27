@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.ColumnDefault;
 
 import java.time.Instant;
 
@@ -40,7 +39,6 @@ public class Connection {
     @Column(name = "access_token_encrypted", nullable = false)
     private String accessTokenEncrypted;
 
-    @ColumnDefault("'DISCONNECTED'")
     @Enumerated(EnumType.STRING)
     @Column(name = "connection_status")
     private ConnectionStatus status;
@@ -48,11 +46,9 @@ public class Connection {
     @Column(name = "last_sync_at")
     private Instant lastSyncAt;
 
-    @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "created_at")
     private Instant createdAt;
 
-    @ColumnDefault("CURRENT_TIMESTAMP")
     @Column(name = "updated_at")
     private Instant updatedAt;
 
