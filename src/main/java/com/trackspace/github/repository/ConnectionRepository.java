@@ -15,12 +15,10 @@ import java.util.Optional;
 public interface ConnectionRepository extends JpaRepository<Connection, Integer> {
     Optional<Connection> findByProjectId(Integer projectId);
 
-    List<Connection> findByConnectionStatus(ConnectionStatus status);
+    List<Connection> findByStatus(ConnectionStatus status);
 
     @Query("SELECT gc FROM Connection gc WHERE gc.lastSyncAt < :threshold OR gc.lastSyncAt IS NULL")
     List<Connection> findConnectionsNeedingSync(@Param("threshold") Instant threshold);
 
     boolean existsByProjectId(Integer projectId);
 }
-
-
