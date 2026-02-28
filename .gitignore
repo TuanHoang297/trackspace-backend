@@ -38,6 +38,10 @@ logs/
 *.db
 *.sqlite
 
+# Local secrets - NEVER commit this file
+application-local.properties
+src/main/resources/application-local.properties
+
 # Environment files
 .env
 .env.local
