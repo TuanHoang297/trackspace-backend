@@ -23,19 +23,23 @@ public class Class {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "class_id")
     private Long id;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "class_name", nullable = false, length = 255)
     private String className;
 
-    @Column(length = 500)
-    private String description;
+    @Column(name = "class_code", unique = true, nullable = false, length = 50)
+    private String classCode;
+
+    @Column(nullable = false, length = 50)
+    private String semester;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lecturer_id")
     private User lecturer;
 
-    @Column(nullable = false)
+    @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean active = true;
 

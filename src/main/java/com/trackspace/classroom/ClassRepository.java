@@ -24,9 +24,9 @@ public interface ClassRepository extends JpaRepository<Class, Long> {
     List<Class> findByLecturerIdAndActiveTrue(Long lecturerId);
 
     /**
-     * Check if a class name already exists
+     * Check if a class code already exists
      */
-    boolean existsByClassName(String className);
+    boolean existsByClassCode(String classCode);
 
     /**
      * Find class by id and active status

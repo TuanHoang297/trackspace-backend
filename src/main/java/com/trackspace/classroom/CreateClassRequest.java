@@ -18,11 +18,17 @@ import lombok.NoArgsConstructor;
 public class CreateClassRequest {
 
     @NotBlank(message = "Tên lớp không được để trống")
-    @Size(max = 100, message = "Tên lớp không được vượt quá 100 ký tự")
-    @Schema(description = "Class name", example = "SE1801")
+    @Size(max = 255, message = "Tên lớp không được vượt quá 255 ký tự")
+    @Schema(description = "Class name", example = "Software Engineering")
     private String className;
 
-    @Size(max = 500, message = "Mô tả không được vượt quá 500 ký tự")
-    @Schema(description = "Class description", example = "Software Engineering class - Semester 1 2026")
-    private String description;
+    @NotBlank(message = "Mã lớp không được để trống")
+    @Size(max = 50, message = "Mã lớp không được vượt quá 50 ký tự")
+    @Schema(description = "Unique class code", example = "SE1801")
+    private String classCode;
+
+    @NotBlank(message = "Học kỳ không được để trống")
+    @Size(max = 50, message = "Học kỳ không được vượt quá 50 ký tự")
+    @Schema(description = "Semester", example = "Spring 2026")
+    private String semester;
 }

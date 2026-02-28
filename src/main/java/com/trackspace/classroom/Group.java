@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(
-        name = "project_groups",
+        name = "`groups`",
         uniqueConstraints = @UniqueConstraint(
                 columnNames = {"class_id", "group_name"},
                 name = "uq_class_group_name"
@@ -29,12 +29,13 @@ public class Group {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "group_id")
     private Long id;
 
-    @Column(name = "group_name", nullable = false, length = 100)
+    @Column(name = "group_name", nullable = false, length = 255)
     private String groupName;
 
-    @Column(length = 500)
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -45,7 +46,11 @@ public class Group {
     @JoinColumn(name = "team_leader_id")
     private User teamLeader;
 
-    @Column(nullable = false)
+    @Column(name = "display_order")
+    @Builder.Default
+    private Integer displayOrder = 0;
+
+    @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean active = true;
 

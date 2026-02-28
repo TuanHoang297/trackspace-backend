@@ -22,11 +22,14 @@ public class ClassResponse {
     @Schema(description = "Class ID", example = "1")
     private Long id;
 
-    @Schema(description = "Class name", example = "SE1801")
+    @Schema(description = "Class name", example = "Software Engineering")
     private String className;
 
-    @Schema(description = "Class description")
-    private String description;
+    @Schema(description = "Unique class code", example = "SE1801")
+    private String classCode;
+
+    @Schema(description = "Semester", example = "Spring 2026")
+    private String semester;
 
     @Schema(description = "Assigned lecturer ID")
     private Long lecturerId;

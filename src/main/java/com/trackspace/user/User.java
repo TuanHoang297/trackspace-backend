@@ -26,22 +26,26 @@ public class User implements UserDetails {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "user_id")
     private Long id;
 
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
-    @Column(nullable = false)
+    @Column(name = "password_hash", nullable = false)
     private String password;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
+
+    @Column(name = "student_code", length = 50)
+    private String studentCode;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
 
-    @Column(nullable = false)
+    @Column(name = "is_active", nullable = false)
     private Boolean active = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
