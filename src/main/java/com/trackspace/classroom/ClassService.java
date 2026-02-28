@@ -35,12 +35,13 @@ public class ClassService {
      */
     @Transactional
     public ClassResponse createClass(CreateClassRequest request) {
-        if (classRepository.existsByClassName(request.getClassName())) {
-            throw new BadRequestException("Tên lớp '" + request.getClassName() + "' đã tồn tại");
+        if (classRepository.existsByClassCode(request.getClassCode())) {
+            throw new BadRequestException("Mã lớp '" + request.getClassCode() + "' đã tồn tại");
         }
         Class newClass = Class.builder()
                 .className(request.getClassName())
-                .description(request.getDescription())
+                .classCode(request.getClassCode())
+                .semester(request.getSemester())
                 .active(true)
                 .build();
         Class saved = classRepository.save(newClass);
@@ -115,14 +116,10 @@ public class ClassService {
 
     private void applyUpdates(Class aClass, UpdateClassRequest request) {
         if (request.getClassName() != null && !request.getClassName().isBlank()) {
-            if (!request.getClassName().equals(aClass.getClassName())
-                    && classRepository.existsByClassName(request.getClassName())) {
-                throw new BadRequestException("Tên lớp '" + request.getClassName() + "' đã tồn tại");
-            }
             aClass.setClassName(request.getClassName());
         }
-        if (request.getDescription() != null) {
-            aClass.setDescription(request.getDescription());
+        if (request.getSemester() != null && !request.getSemester().isBlank()) {
+            aClass.setSemester(request.getSemester());
         }
         if (request.getActive() != null) {
             aClass.setActive(request.getActive());
@@ -231,7 +228,8 @@ public class ClassService {
         return ClassResponse.builder()
                 .id(aClass.getId())
                 .className(aClass.getClassName())
-                .description(aClass.getDescription())
+                .classCode(aClass.getClassCode())
+                .semester(aClass.getSemester())
                 .lecturerId(lecturer != null ? lecturer.getId() : null)
                 .lecturerName(lecturer != null ? lecturer.getFullName() : null)
                 .lecturerEmail(lecturer != null ? lecturer.getEmail() : null)

@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @Table(
         name = "group_members",
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {"group_id", "member_id"},
+                columnNames = {"group_id", "student_id"},
                 name = "uq_group_member"
         )
 )
@@ -36,7 +36,7 @@ public class GroupMember {
     private Group group;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "member_id", nullable = false)
+    @JoinColumn(name = "student_id", nullable = false)
     private User member;
 
     @Column(name = "joined_at", nullable = false, updatable = false)

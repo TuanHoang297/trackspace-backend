@@ -2,7 +2,10 @@ package com.trackspace.common;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
@@ -67,6 +70,33 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(
                 ApiResponse.error("Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên"),
                 HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleBadCredentialsException(
+            BadCredentialsException ex, WebRequest request) {
+
+        return new ResponseEntity<>(
+                ApiResponse.error("Email hoặc mật khẩu không đúng"),
+                HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(LockedException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleLockedException(
+            LockedException ex, WebRequest request) {
+
+        return new ResponseEntity<>(
+                ApiResponse.error("Tài khoản đã bị khóa, vui lòng liên hệ quản trị viên"),
+                HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleAuthenticationException(
+            AuthenticationException ex, WebRequest request) {
+
+        return new ResponseEntity<>(
+                ApiResponse.error("Xác thực thất bại: " + ex.getMessage()),
+                HttpStatus.UNAUTHORIZED);
     }
 
     @ExceptionHandler(Exception.class)

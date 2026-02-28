@@ -16,13 +16,13 @@ import lombok.NoArgsConstructor;
 @Schema(description = "Update class request payload")
 public class UpdateClassRequest {
 
-    @Size(max = 100, message = "Tên lớp không được vượt quá 100 ký tự")
-    @Schema(description = "New class name", example = "SE1801-Updated")
+    @Size(max = 255, message = "Tên lớp không được vượt quá 255 ký tự")
+    @Schema(description = "New class name", example = "Software Engineering Updated")
     private String className;
 
-    @Size(max = 500, message = "Mô tả không được vượt quá 500 ký tự")
-    @Schema(description = "New class description", example = "Updated description")
-    private String description;
+    @Size(max = 50, message = "Học kỳ không được vượt quá 50 ký tự")
+    @Schema(description = "Semester", example = "Fall 2026")
+    private String semester;
 
     @Schema(description = "Active status of the class", example = "true")
     private Boolean active;
