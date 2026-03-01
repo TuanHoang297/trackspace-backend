@@ -19,6 +19,9 @@ import java.time.LocalDateTime;
 @Schema(description = "Student in class response payload")
 public class StudentInClassResponse {
 
+    @Schema(description = "Enrollment record ID")
+    private Long enrollmentId;
+
     @Schema(description = "Student user ID")
     private Long studentId;
 
@@ -27,6 +30,15 @@ public class StudentInClassResponse {
 
     @Schema(description = "Student email")
     private String email;
+
+    @Schema(description = "Student code (MSSV)")
+    private String studentCode;
+
+    @Schema(description = "Group ID the student belongs to (null if not in a group)")
+    private Long groupId;
+
+    @Schema(description = "Group name the student belongs to (null if not in a group)")
+    private String groupName;
 
     @Schema(description = "Enrollment date")
     private LocalDateTime enrolledAt;

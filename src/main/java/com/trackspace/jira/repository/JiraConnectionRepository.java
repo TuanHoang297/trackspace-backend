@@ -15,6 +15,8 @@ import java.util.Optional;
 public interface JiraConnectionRepository extends JpaRepository<JiraConnection, Integer> {
     Optional<JiraConnection> findByProjectId(Integer projectId);
 
+    Optional<JiraConnection> findByProjectKey(String projectKey);
+
     boolean existsByProjectId(Integer projectId);
 
     List<JiraConnection> findByConnectionStatus(JiraConnectionStatus status);

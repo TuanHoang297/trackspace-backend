@@ -26,4 +26,10 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupM
 
     @Query("SELECT COUNT(gm) > 0 FROM GroupMember gm WHERE gm.group.classroom.id = :classId AND gm.member.id = :memberId")
     boolean existsByClassIdAndMemberId(@Param("classId") Long classId, @Param("memberId") Long memberId);
+
+    @Query("SELECT gm FROM GroupMember gm JOIN FETCH gm.group WHERE gm.group.classroom.id = :classId AND gm.member.id = :memberId")
+    Optional<GroupMember> findByClassIdAndMemberId(@Param("classId") Long classId, @Param("memberId") Long memberId);
+
+    @Query("SELECT gm FROM GroupMember gm JOIN FETCH gm.group g JOIN FETCH g.classroom WHERE gm.member.id = :memberId")
+    List<GroupMember> findByMemberId(@Param("memberId") Long memberId);
 }

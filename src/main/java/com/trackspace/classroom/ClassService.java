@@ -21,6 +21,7 @@ public class ClassService {
     private final ClassRepository classRepository;
     private final ClassStudentRepository classStudentRepository;
     private final UserRepository userRepository;
+    private final GroupMemberRepository groupMemberRepository;
 
     private static final String CLASS_NOT_FOUND = "Không tìm thấy lớp học với ID: %d";
     private static final String USER_NOT_FOUND = "Không tìm thấy người dùng với ID: %d";
@@ -156,7 +157,7 @@ public class ClassService {
     public List<StudentInClassResponse> getStudentsByClassId(Long classId) {
         findActiveClassById(classId);
         return classStudentRepository.findByClassIdWithStudent(classId).stream()
-                .map(this::buildStudentInClassResponse)
+                .map(cs -> buildStudentInClassResponse(cs, classId))
                 .toList();
     }
 
@@ -182,7 +183,7 @@ public class ClassService {
                 .build();
 
         ClassStudent saved = classStudentRepository.save(classStudent);
-        return buildStudentInClassResponse(saved);
+        return buildStudentInClassResponse(saved, classId);
     }
 
     /**
@@ -246,11 +247,24 @@ public class ClassService {
                 .build();
     }
 
-    private StudentInClassResponse buildStudentInClassResponse(ClassStudent cs) {
+    private StudentInClassResponse buildStudentInClassResponse(ClassStudent cs, Long classId) {
+        User student = cs.getStudent();
+        // Look up group membership for this student in the class
+        Long groupId = null;
+        String groupName = null;
+        var membership = groupMemberRepository.findByClassIdAndMemberId(classId, student.getId());
+        if (membership.isPresent()) {
+            groupId = membership.get().getGroup().getId();
+            groupName = membership.get().getGroup().getGroupName();
+        }
         return StudentInClassResponse.builder()
-                .studentId(cs.getStudent().getId())
-                .fullName(cs.getStudent().getFullName())
-                .email(cs.getStudent().getEmail())
+                .enrollmentId(student.getId())
+                .studentId(student.getId())
+                .fullName(student.getFullName())
+                .email(student.getEmail())
+                .studentCode(student.getStudentCode())
+                .groupId(groupId)
+                .groupName(groupName)
                 .enrolledAt(cs.getEnrolledAt())
                 .build();
     }

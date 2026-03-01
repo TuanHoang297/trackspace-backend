@@ -123,6 +123,32 @@ public class JiraApiClient {
     }
 
     /**
+     * Fetch issue keys for a specific sprint using Jira Agile REST API
+     * GET /rest/agile/1.0/sprint/{sprintId}/issue
+     */
+    public List<String> fetchIssueKeysForSprint(String siteUrl, String email, String apiToken, int jiraSprintId) {
+        try {
+            String url = buildBaseUrl(siteUrl) + "/rest/agile/1.0/sprint/" + jiraSprintId
+                    + "/issue?maxResults=200&fields=key";
+            HttpHeaders headers = createHeaders(email, apiToken);
+            HttpEntity<?> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<JiraSearchResultDto> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, JiraSearchResultDto.class);
+
+            if (response.getBody() != null && response.getBody().getIssues() != null) {
+                return response.getBody().getIssues().stream()
+                        .map(JiraIssueDto::getKey)
+                        .toList();
+            }
+            return List.of();
+        } catch (Exception ex) {
+            log.warn("Failed to fetch issues for sprint {}: {}", jiraSprintId, ex.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * Create an issue in Jira
      */
     public JiraIssueDto createIssue(String siteUrl, String email, String apiToken,

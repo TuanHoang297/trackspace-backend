@@ -97,6 +97,29 @@ public class JiraIssueServiceImpl implements JiraIssueService {
         connection.setLastSyncAt(Instant.now());
         connectionRepository.save(connection);
 
+        // === SECOND PASS: Map issues to sprints using Jira Agile API ===
+        List<JiraSprint> localSprints = sprintRepository.findByProjectIdOrderByStartDateDesc(
+                request.getProjectId());
+        int sprintMapped = 0;
+        for (JiraSprint localSprint : localSprints) {
+            int jiraSprintIdInt = Integer.parseInt(localSprint.getJiraSprintId());
+            List<String> issueKeys = jiraApiClient.fetchIssueKeysForSprint(
+                    connection.getSiteUrl(), connection.getEmail(),
+                    connection.getApiTokenEncrypted(), jiraSprintIdInt);
+
+            log.info("Sprint '{}' (jiraId={}) has {} issues on Jira",
+                    localSprint.getSprintName(), localSprint.getJiraSprintId(), issueKeys.size());
+
+            for (String issueKey : issueKeys) {
+                issueRepository.findByIssueKey(issueKey).ifPresent(issue -> {
+                    issue.setSprintId(localSprint.getId());
+                    issueRepository.save(issue);
+                });
+            }
+            sprintMapped += issueKeys.size();
+        }
+        log.info("Sprint mapping: {} issues mapped to sprints", sprintMapped);
+
         log.info("Issue sync completed for project {}: {} new, {} updated",
                 request.getProjectId(), syncedCount, updatedCount);
 
@@ -234,6 +257,24 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 } catch (Exception e) {
                     log.warn("Failed to parse due date: {}", dto.getFields().getDuedate());
                 }
+            }
+
+            // Map sprint: lookup Jira sprint ID → local sprint_id
+            if (dto.getFields().getSprint() != null && dto.getFields().getSprint().getId() != null) {
+                String jiraSprintId = String.valueOf(dto.getFields().getSprint().getId());
+                log.info("Issue {} has Jira sprint id={}, name={}",
+                        dto.getKey(), jiraSprintId, dto.getFields().getSprint().getName());
+                var localSprint = sprintRepository.findByJiraSprintId(jiraSprintId);
+                if (localSprint.isPresent()) {
+                    issue.setSprintId(localSprint.get().getId());
+                    log.info("  → Mapped to local sprint id={}", localSprint.get().getId());
+                } else {
+                    log.warn("  → No local sprint found for jiraSprintId={}", jiraSprintId);
+                    issue.setSprintId(null);
+                }
+            } else {
+                log.info("Issue {} has no sprint field", dto.getKey());
+                issue.setSprintId(null); // No sprint → backlog
             }
 
             // TODO: Map assignee email to user ID when UserRepository is available
