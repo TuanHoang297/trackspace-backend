@@ -1,9 +1,8 @@
 package com.trackspace.auth;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -13,19 +12,17 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Handles successful Google OAuth2 authentication.
- * Generates a JWT and redirects to the frontend with ?token=...
+ * Generates a JWT token and redirects to the frontend with {@code ?token=...}.
  */
 @Component
+@RequiredArgsConstructor
 public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
-    @Autowired
-    private JwtTokenProvider jwtTokenProvider;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Value("${app.oauth2.authorized-redirect-uris}")
     private List<String> authorizedRedirectUris;
@@ -35,7 +32,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
                                         HttpServletResponse response,
                                         Authentication authentication) throws IOException {
         String targetUrl = determineTargetUrl(request, response, authentication);
-        clearAuthCookies(request, response);
+        OAuth2CookieUtils.clearAuthCookies(request, response);
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
     }
 
@@ -43,14 +40,16 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     protected String determineTargetUrl(HttpServletRequest request,
                                         HttpServletResponse response,
                                         Authentication authentication) {
-        Optional<String> redirectUri = getCookieValue(request, HttpCookieOAuth2AuthorizationRequestRepository.REDIRECT_URI_COOKIE);
-
-        String targetUrl = redirectUri.filter(this::isAuthorizedRedirectUri)
-                .orElse(getDefaultTargetUrl());
+        // Use the redirect_uri supplied by the frontend, falling back to the first
+        // configured URI to avoid redirecting to the backend root ("/") which would
+        // cause an auth loop.
+        String targetUrl = OAuth2CookieUtils
+                .getCookieValue(request, HttpCookieOAuth2AuthorizationRequestRepository.REDIRECT_URI_COOKIE)
+                .filter(this::isAuthorizedRedirectUri)
+                .orElse(authorizedRedirectUris.isEmpty() ? getDefaultTargetUrl() : authorizedRedirectUris.get(0));
 
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
-        String email = oAuth2User.getAttribute("email");
-        String token = jwtTokenProvider.generateTokenFromEmail(email);
+        String token = jwtTokenProvider.generateTokenFromEmail(oAuth2User.getAttribute("email"));
 
         return UriComponentsBuilder.fromUriString(targetUrl)
                 .queryParam("token", token)
@@ -58,34 +57,11 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     }
 
     private boolean isAuthorizedRedirectUri(String redirectUri) {
-        URI clientRedirectUri = URI.create(redirectUri);
+        URI client = URI.create(redirectUri);
         return authorizedRedirectUris.stream().anyMatch(authorizedUri -> {
             URI authorized = URI.create(authorizedUri);
-            return authorized.getHost().equalsIgnoreCase(clientRedirectUri.getHost())
-                    && authorized.getPort() == clientRedirectUri.getPort();
+            return authorized.getHost().equalsIgnoreCase(client.getHost())
+                    && authorized.getPort() == client.getPort();
         });
-    }
-
-    private Optional<String> getCookieValue(HttpServletRequest request, String name) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) return Optional.empty();
-        return Arrays.stream(cookies)
-                .filter(c -> c.getName().equals(name))
-                .map(Cookie::getValue)
-                .findFirst();
-    }
-
-    private void clearAuthCookies(HttpServletRequest request, HttpServletResponse response) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) return;
-        Arrays.stream(cookies)
-                .filter(c -> c.getName().equals(HttpCookieOAuth2AuthorizationRequestRepository.OAUTH2_AUTH_REQUEST_COOKIE)
-                        || c.getName().equals(HttpCookieOAuth2AuthorizationRequestRepository.REDIRECT_URI_COOKIE))
-                .forEach(c -> {
-                    c.setValue("");
-                    c.setPath("/");
-                    c.setMaxAge(0);
-                    response.addCookie(c);
-                });
     }
 }

@@ -44,6 +44,9 @@ public class ClassService {
                 .semester(request.getSemester())
                 .active(true)
                 .build();
+        if (request.getLecturerId() != null) {
+            newClass.setLecturer(findLecturerById(request.getLecturerId()));
+        }
         Class saved = classRepository.save(newClass);
         return buildClassResponse(saved, 0L);
     }
@@ -123,6 +126,9 @@ public class ClassService {
         }
         if (request.getActive() != null) {
             aClass.setActive(request.getActive());
+        }
+        if (request.getLecturerId() != null) {
+            aClass.setLecturer(findLecturerById(request.getLecturerId()));
         }
     }
 
@@ -242,7 +248,6 @@ public class ClassService {
 
     private StudentInClassResponse buildStudentInClassResponse(ClassStudent cs) {
         return StudentInClassResponse.builder()
-                .enrollmentId(cs.getId())
                 .studentId(cs.getStudent().getId())
                 .fullName(cs.getStudent().getFullName())
                 .email(cs.getStudent().getEmail())

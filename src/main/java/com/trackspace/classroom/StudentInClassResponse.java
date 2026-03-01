@@ -19,9 +19,6 @@ import java.time.LocalDateTime;
 @Schema(description = "Student in class response payload")
 public class StudentInClassResponse {
 
-    @Schema(description = "ClassStudent record ID")
-    private Long enrollmentId;
-
     @Schema(description = "Student user ID")
     private Long studentId;
 

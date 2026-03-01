@@ -13,7 +13,7 @@ import java.util.Optional;
  * Data access layer for GroupMember entities
  */
 @Repository
-public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> {
+public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupMemberId> {
 
     boolean existsByGroupIdAndMemberId(Long groupId, Long memberId);
 
