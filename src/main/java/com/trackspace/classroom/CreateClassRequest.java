@@ -31,4 +31,7 @@ public class CreateClassRequest {
     @Size(max = 50, message = "Học kỳ không được vượt quá 50 ký tự")
     @Schema(description = "Semester", example = "Spring 2026")
     private String semester;
+
+    @Schema(description = "Lecturer user ID to assign to this class", example = "5")
+    private Long lecturerId;
 }

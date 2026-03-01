@@ -26,4 +26,7 @@ public class UpdateClassRequest {
 
     @Schema(description = "Active status of the class", example = "true")
     private Boolean active;
+
+    @Schema(description = "Lecturer user ID to assign to this class", example = "5")
+    private Long lecturerId;
 }

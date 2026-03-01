@@ -33,7 +33,7 @@ public class ClassController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Create class", description = "Admin creates a new class and optionally assigns a lecturer")
+    @Operation(summary = "Create class", description = "Admin creates a new class. Optionally include lecturerId to assign a lecturer immediately.")
     public ResponseEntity<ApiResponse<ClassResponse>> createClass(
             @Valid @RequestBody CreateClassRequest request) {
         ClassResponse response = classService.createClass(request);
@@ -65,7 +65,7 @@ public class ClassController {
 
     @PutMapping("/{classId}")
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Update class", description = "Admin updates class name, description, or lecturer assignment")
+    @Operation(summary = "Update class", description = "Admin updates class name, semester, active status, or lecturer assignment")
     public ResponseEntity<ApiResponse<ClassResponse>> updateClass(
             @PathVariable Long classId,
             @Valid @RequestBody UpdateClassRequest request) {
@@ -82,18 +82,6 @@ public class ClassController {
         classService.deleteClass(classId);
         return ResponseEntity.ok(
                 ApiResponse.success("Xóa lớp học thành công", null)
-        );
-    }
-
-    @PutMapping("/{classId}/lecturer")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Assign lecturer", description = "Admin assigns or changes the lecturer for a class")
-    public ResponseEntity<ApiResponse<ClassResponse>> assignLecturer(
-            @PathVariable Long classId,
-            @Valid @RequestBody AssignLecturerRequest request) {
-        ClassResponse response = classService.assignLecturer(classId, request.getLecturerId());
-        return ResponseEntity.ok(
-                ApiResponse.success("Gán giảng viên thành công", response)
         );
     }
 

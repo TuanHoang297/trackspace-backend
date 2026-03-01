@@ -13,7 +13,7 @@ import java.util.Optional;
  * Data access layer for ClassStudent entities
  */
 @Repository
-public interface ClassStudentRepository extends JpaRepository<ClassStudent, Long> {
+public interface ClassStudentRepository extends JpaRepository<ClassStudent, ClassStudentId> {
 
     /**
      * Find all class-student records for a given student

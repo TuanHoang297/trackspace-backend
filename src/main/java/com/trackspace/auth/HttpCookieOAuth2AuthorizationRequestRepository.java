@@ -10,10 +10,18 @@ import org.springframework.util.SerializationUtils;
 
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Optional;
 
 /**
- * Stores the OAuth2 authorization request in a cookie (instead of HTTP session)
- * to stay compatible with stateless JWT architecture.
+ * Stores the OAuth2 authorization request in an HTTP cookie instead of the HTTP session,
+ * keeping the architecture stateless and compatible with JWT.
+ *
+ * <p>Cookie notes:
+ * <ul>
+ *   <li>Base64 uses {@code withoutPadding()} to avoid {@code =} characters that break cookie values.</li>
+ *   <li>{@code SameSite=Lax} is set via raw header because the Jakarta {@link Cookie} API
+ *       does not expose the SameSite attribute.</li>
+ * </ul>
  */
 @Component
 public class HttpCookieOAuth2AuthorizationRequestRepository
@@ -21,7 +29,7 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
 
     public static final String OAUTH2_AUTH_REQUEST_COOKIE = "OAUTH2_AUTH_REQUEST";
     public static final String REDIRECT_URI_COOKIE = "REDIRECT_URI";
-    private static final int COOKIE_MAX_AGE = 180;
+    private static final int COOKIE_MAX_AGE_SECONDS = 180;
 
     @Override
     public OAuth2AuthorizationRequest loadAuthorizationRequest(HttpServletRequest request) {
@@ -40,11 +48,11 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
             return;
         }
 
-        addCookie(response, OAUTH2_AUTH_REQUEST_COOKIE, serialize(authorizationRequest), COOKIE_MAX_AGE);
+        addCookie(response, OAUTH2_AUTH_REQUEST_COOKIE, serialize(authorizationRequest), COOKIE_MAX_AGE_SECONDS);
 
         String redirectUri = request.getParameter("redirect_uri");
         if (redirectUri != null && !redirectUri.isBlank()) {
-            addCookie(response, REDIRECT_URI_COOKIE, redirectUri, COOKIE_MAX_AGE);
+            addCookie(response, REDIRECT_URI_COOKIE, redirectUri, COOKIE_MAX_AGE_SECONDS);
         }
     }
 
@@ -60,9 +68,9 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
     // Cookie helpers
     // -------------------------------------------------------------------------
 
-    private java.util.Optional<String> getCookieValue(HttpServletRequest request, String name) {
+    private Optional<String> getCookieValue(HttpServletRequest request, String name) {
         Cookie[] cookies = request.getCookies();
-        if (cookies == null) return java.util.Optional.empty();
+        if (cookies == null) return Optional.empty();
         return Arrays.stream(cookies)
                 .filter(c -> c.getName().equals(name))
                 .map(Cookie::getValue)
@@ -70,13 +78,8 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
     }
 
     private void addCookie(HttpServletResponse response, String name, String value, int maxAge) {
-        // Use addHeader directly to support SameSite=Lax attribute
-        // (Jakarta Cookie class does not expose SameSite)
-        String cookie = name + "=" + value
-                + "; Path=/"
-                + "; Max-Age=" + maxAge
-                + "; SameSite=Lax";
-        response.addHeader("Set-Cookie", cookie);
+        response.addHeader("Set-Cookie",
+                name + "=" + value + "; Path=/; Max-Age=" + maxAge + "; SameSite=Lax");
     }
 
     private void deleteCookie(HttpServletRequest request, HttpServletResponse response, String name) {
@@ -84,8 +87,7 @@ public class HttpCookieOAuth2AuthorizationRequestRepository
         if (cookies == null) return;
         boolean exists = Arrays.stream(cookies).anyMatch(c -> c.getName().equals(name));
         if (exists) {
-            String expired = name + "=; Path=/; Max-Age=0; SameSite=Lax";
-            response.addHeader("Set-Cookie", expired);
+            response.addHeader("Set-Cookie", name + "=; Path=/; Max-Age=0; SameSite=Lax");
         }
     }
 

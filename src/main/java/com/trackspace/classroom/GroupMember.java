@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
                 name = "uq_group_member"
         )
 )
+@IdClass(GroupMemberId.class)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -28,13 +29,11 @@ import java.time.LocalDateTime;
 public class GroupMember {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", nullable = false)
     private Group group;
 
+    @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "student_id", nullable = false)
     private User member;

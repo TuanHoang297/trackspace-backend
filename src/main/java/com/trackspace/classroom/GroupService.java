@@ -236,7 +236,6 @@ public class GroupService {
     private GroupMemberResponse buildGroupMemberResponse(GroupMember gm, Long leaderId) {
         User member = gm.getMember();
         return GroupMemberResponse.builder()
-                .membershipId(gm.getId())
                 .userId(member.getId())
                 .fullName(member.getFullName())
                 .email(member.getEmail())

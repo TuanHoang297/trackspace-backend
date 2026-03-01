@@ -19,9 +19,6 @@ import java.time.LocalDateTime;
 @Schema(description = "Group member response payload")
 public class GroupMemberResponse {
 
-    @Schema(description = "GroupMember record ID")
-    private Long membershipId;
-
     @Schema(description = "User ID")
     private Long userId;
 
