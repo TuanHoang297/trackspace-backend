@@ -64,6 +64,14 @@ public class JiraIssue {
     @Column(name = "assignee_id")
     private Integer assigneeId;
 
+    @Size(max = 255)
+    @Column(name = "assignee_name")
+    private String assigneeName;
+
+    @Size(max = 255)
+    @Column(name = "jira_account_id")
+    private String jiraAccountId;
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 

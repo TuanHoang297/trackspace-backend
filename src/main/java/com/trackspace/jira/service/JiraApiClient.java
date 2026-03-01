@@ -73,8 +73,14 @@ public class JiraApiClient {
                     url, HttpMethod.GET, entity, JiraSprintListDto.class);
 
             if (response.getBody() != null && response.getBody().getValues() != null) {
-                log.info("Fetched {} sprints for project {}", response.getBody().getValues().size(), projectKey);
-                return response.getBody().getValues();
+                // Filter: only keep sprints that originate from this board
+                List<JiraSprintDto> allSprints = response.getBody().getValues();
+                List<JiraSprintDto> filtered = allSprints.stream()
+                        .filter(s -> s.getOriginBoardId() == null || s.getOriginBoardId().equals(boardId))
+                        .collect(java.util.stream.Collectors.toList());
+                log.info("Fetched {} sprints for project {} (filtered from {})",
+                        filtered.size(), projectKey, allSprints.size());
+                return filtered;
             }
 
             return Collections.emptyList();
@@ -280,6 +286,198 @@ public class JiraApiClient {
     }
 
     /**
+     * Update issue fields in Jira (summary, description, priority, issue type)
+     * PUT /rest/api/3/issue/{issueKey}
+     */
+    @SuppressWarnings("unchecked")
+    public void updateIssue(String siteUrl, String email, String apiToken,
+            String issueKey, String summary, String description, String priority, String issueType, String dueDate) {
+        String url = buildBaseUrl(siteUrl) + "/rest/api/3/issue/" + issueKey;
+        HttpHeaders headers = createHeaders(email, apiToken);
+
+        Map<String, Object> fields = new HashMap<>();
+        if (summary != null)
+            fields.put("summary", summary);
+        if (priority != null)
+            fields.put("priority", Map.of("name", priority));
+        if (issueType != null)
+            fields.put("issuetype", Map.of("name", issueType));
+        if (dueDate != null)
+            fields.put("duedate", dueDate);
+        if (description != null) {
+            // Convert plain text to ADF format
+            fields.put("description", Map.of(
+                    "type", "doc",
+                    "version", 1,
+                    "content", List.of(Map.of(
+                            "type", "paragraph",
+                            "content", List.of(Map.of("type", "text", "text", description))))));
+        }
+
+        Map<String, Object> body = Map.of("fields", fields);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+            log.info("Updated issue {} on Jira", issueKey);
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to update issue {}: {}", issueKey, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Delete an issue from Jira
+     * DELETE /rest/api/3/issue/{issueKey}
+     */
+    public void deleteIssue(String siteUrl, String email, String apiToken, String issueKey) {
+        String url = buildBaseUrl(siteUrl) + "/rest/api/3/issue/" + issueKey;
+        HttpHeaders headers = createHeaders(email, apiToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.DELETE, entity, Void.class);
+            log.info("Deleted issue {} from Jira", issueKey);
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to delete issue {}: {}", issueKey, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Assign an issue to a user on Jira
+     * PUT /rest/api/3/issue/{issueKey}/assignee
+     */
+    public void assignIssueOnJira(String siteUrl, String email, String apiToken,
+            String issueKey, String accountId) {
+        String url = buildBaseUrl(siteUrl) + "/rest/api/3/issue/" + issueKey + "/assignee";
+        HttpHeaders headers = createHeaders(email, apiToken);
+
+        Map<String, String> body = new HashMap<>();
+        body.put("accountId", accountId);
+        HttpEntity<Map<String, String>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+            log.info("Assigned issue {} to accountId {} on Jira", issueKey, accountId);
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to assign issue {}: {}", issueKey, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Get assignable users for a Jira project
+     * GET /rest/api/3/user/assignable/search?project={projectKey}
+     */
+    @SuppressWarnings("unchecked")
+    public List<JiraUserDto> getAssignableUsers(String siteUrl, String email, String apiToken,
+            String projectKey) {
+        String url = buildBaseUrl(siteUrl) + "/rest/api/3/user/assignable/search?project=" + projectKey;
+        HttpHeaders headers = createHeaders(email, apiToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+
+        try {
+            var response = restTemplate.exchange(url, HttpMethod.GET, entity, JiraUserDto[].class);
+            JiraUserDto[] users = response.getBody();
+            log.info("Found {} assignable users for project {}", users != null ? users.length : 0, projectKey);
+            return users != null ? List.of(users) : List.of();
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to get assignable users for {}: {}", projectKey, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Create a sprint in Jira
+     * POST /rest/agile/1.0/sprint
+     */
+    @SuppressWarnings("unchecked")
+    public JiraSprintDto createSprint(String siteUrl, String email, String apiToken,
+            String projectKey, String name, String startDate, String endDate, String goal) {
+        Integer boardId = findBoardId(siteUrl, email, apiToken, projectKey);
+        if (boardId == null) {
+            throw new RuntimeException("Cannot find Jira board for project " + projectKey);
+        }
+
+        String url = buildBaseUrl(siteUrl) + "/rest/agile/1.0/sprint";
+        HttpHeaders headers = createHeaders(email, apiToken);
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("name", name);
+        body.put("originBoardId", boardId);
+        if (startDate != null)
+            body.put("startDate", startDate);
+        if (endDate != null)
+            body.put("endDate", endDate);
+        if (goal != null)
+            body.put("goal", goal);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            ResponseEntity<JiraSprintDto> response = restTemplate.exchange(
+                    url, HttpMethod.POST, entity, JiraSprintDto.class);
+            log.info("Created sprint '{}' on Jira", name);
+            return response.getBody();
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to create sprint: {}", ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Update a sprint in Jira
+     * PUT /rest/agile/1.0/sprint/{sprintId}
+     */
+    @SuppressWarnings("unchecked")
+    public void updateSprint(String siteUrl, String email, String apiToken,
+            int jiraSprintId, String name, String startDate, String endDate, String goal, String state) {
+        String url = buildBaseUrl(siteUrl) + "/rest/agile/1.0/sprint/" + jiraSprintId;
+        HttpHeaders headers = createHeaders(email, apiToken);
+
+        Map<String, Object> body = new HashMap<>();
+        if (name != null)
+            body.put("name", name);
+        if (startDate != null)
+            body.put("startDate", startDate);
+        if (endDate != null)
+            body.put("endDate", endDate);
+        if (goal != null)
+            body.put("goal", goal);
+        if (state != null)
+            body.put("state", state);
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.PUT, entity, Void.class);
+            log.info("Updated sprint {} on Jira", jiraSprintId);
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to update sprint {}: {}", jiraSprintId, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
+     * Delete a sprint from Jira
+     * DELETE /rest/agile/1.0/sprint/{sprintId}
+     */
+    public void deleteSprint(String siteUrl, String email, String apiToken, int jiraSprintId) {
+        String url = buildBaseUrl(siteUrl) + "/rest/agile/1.0/sprint/" + jiraSprintId;
+        HttpHeaders headers = createHeaders(email, apiToken);
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+
+        try {
+            restTemplate.exchange(url, HttpMethod.DELETE, entity, Void.class);
+            log.info("Deleted sprint {} from Jira", jiraSprintId);
+        } catch (HttpClientErrorException ex) {
+            log.error("Failed to delete sprint {}: {}", jiraSprintId, ex.getResponseBodyAsString());
+            throw new RuntimeException(handleJiraError(ex));
+        }
+    }
+
+    /**
      * Find board ID for a project
      */
     private Integer findBoardId(String siteUrl, String email, String apiToken, String projectKey) {
@@ -376,6 +574,7 @@ public class JiraApiClient {
         private String goal;
         private String startDate;
         private String endDate;
+        private Integer originBoardId;
     }
 
     @Data

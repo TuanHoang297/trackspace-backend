@@ -230,6 +230,52 @@ public class JiraIssueServiceImpl implements JiraIssueService {
         return mapToResponse(saved);
     }
 
+    /**
+     * Assign issue on Jira using jiraAccountId, then update local
+     */
+    @Transactional
+    public JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName) {
+        log.info("Assigning issue {} to Jira accountId {} ({})", issueId, jiraAccountId, displayName);
+
+        JiraIssue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
+
+        JiraConnection conn = connectionRepository.findByProjectId(issue.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Jira connection not found for project: " + issue.getProjectId()));
+
+        // Assign on Jira
+        jiraApiClient.assignIssueOnJira(
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                issue.getIssueKey(), jiraAccountId);
+
+        // Update local
+        issue.setJiraAccountId(jiraAccountId);
+        issue.setAssigneeName(displayName);
+        JiraIssue saved = issueRepository.save(issue);
+
+        log.info("Successfully assigned issue {} to {} on Jira", issue.getIssueKey(), displayName);
+        return mapToResponse(saved);
+    }
+
+    @Override
+    public List<Map<String, String>> getAssignableUsers(Integer projectId) {
+        JiraConnection conn = connectionRepository.findByProjectId(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Jira connection not found for project: " + projectId));
+
+        var users = jiraApiClient.getAssignableUsers(
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(), conn.getProjectKey());
+
+        return users.stream().map(u -> {
+            Map<String, String> m = new java.util.HashMap<>();
+            m.put("accountId", u.getAccountId());
+            m.put("displayName", u.getDisplayName());
+            m.put("emailAddress", u.getEmailAddress() != null ? u.getEmailAddress() : "");
+            return m;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
     private void updateIssueFromDto(JiraIssue issue, JiraIssueDto dto) {
         if (dto.getFields() != null) {
             issue.setSummary(dto.getFields().getSummary());
@@ -277,7 +323,14 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 issue.setSprintId(null); // No sprint → backlog
             }
 
-            // TODO: Map assignee email to user ID when UserRepository is available
+            // Map assignee displayName and accountId from Jira
+            if (dto.getFields().getAssignee() != null) {
+                issue.setAssigneeName(dto.getFields().getAssignee().getDisplayName());
+                issue.setJiraAccountId(dto.getFields().getAssignee().getAccountId());
+            } else {
+                issue.setAssigneeName(null);
+                issue.setJiraAccountId(null);
+            }
         }
     }
 
@@ -328,6 +381,60 @@ public class JiraIssueServiceImpl implements JiraIssueService {
         }
     }
 
+    @Override
+    @Transactional
+    public JiraIssueResponse updateIssue(Integer issueId, JiraIssueRequest request) {
+        JiraIssue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
+
+        JiraConnection conn = connectionRepository.findByProjectId(issue.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Jira connection not found for project: " + issue.getProjectId()));
+
+        // Update on Jira
+        jiraApiClient.updateIssue(
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                issue.getIssueKey(),
+                request.getSummary(), request.getDescription(),
+                request.getPriority(), request.getIssueType(),
+                request.getDueDate() != null ? request.getDueDate().toString() : null);
+
+        // Update locally
+        if (request.getSummary() != null)
+            issue.setSummary(request.getSummary());
+        if (request.getDescription() != null)
+            issue.setDescription(request.getDescription());
+        if (request.getPriority() != null)
+            issue.setPriority(request.getPriority());
+        if (request.getIssueType() != null)
+            issue.setIssueType(parseIssueType(request.getIssueType()));
+        if (request.getDueDate() != null)
+            issue.setDueDate(request.getDueDate());
+        issueRepository.save(issue);
+
+        log.info("Updated issue {}", issue.getIssueKey());
+        return mapToResponse(issue);
+    }
+
+    @Override
+    @Transactional
+    public void deleteIssue(Integer issueId) {
+        JiraIssue issue = issueRepository.findById(issueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
+
+        JiraConnection conn = connectionRepository.findByProjectId(issue.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Jira connection not found for project: " + issue.getProjectId()));
+
+        // Delete on Jira
+        jiraApiClient.deleteIssue(
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                issue.getIssueKey());
+
+        issueRepository.delete(issue);
+        log.info("Deleted issue {}", issue.getIssueKey());
+    }
+
     private JiraIssueResponse mapToResponse(JiraIssue issue) {
         return JiraIssueResponse.builder()
                 .issueId(issue.getId())
@@ -341,7 +448,8 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 .status(issue.getStatus())
                 .priority(issue.getPriority())
                 .assigneeId(issue.getAssigneeId())
-                .assigneeName(null) // TODO: Get from UserRepository
+                .assigneeName(issue.getAssigneeName())
+                .jiraAccountId(issue.getJiraAccountId())
                 .dueDate(issue.getDueDate())
                 .createdAt(issue.getCreatedAt())
                 .updatedAt(issue.getUpdatedAt())

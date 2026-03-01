@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface JiraSprintRepository extends JpaRepository<JiraSprint, Integer> {
     List<JiraSprint> findByProjectIdOrderByStartDateDesc(Integer projectId);
 
+    List<JiraSprint> findByProjectIdOrderByStartDateAsc(Integer projectId);
+
     List<JiraSprint> findByProjectIdAndStatus(Integer projectId, SprintStatus status);
 
     Optional<JiraSprint> findByJiraSprintId(String jiraSprintId);

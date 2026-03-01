@@ -1,5 +1,6 @@
 package com.trackspace.jira.service;
 
+import com.trackspace.jira.dto.JiraSprintRequest;
 import com.trackspace.jira.dto.JiraSprintResponse;
 import com.trackspace.jira.dto.JiraSyncRequest;
 
@@ -20,4 +21,19 @@ public interface JiraSprintService {
      * Sync sprints from Jira
      */
     Map<String, Object> syncSprints(JiraSyncRequest request);
+
+    /**
+     * Create a new sprint and sync to Jira
+     */
+    JiraSprintResponse createSprint(JiraSprintRequest request);
+
+    /**
+     * Update sprint and sync to Jira
+     */
+    JiraSprintResponse updateSprint(Integer sprintId, JiraSprintRequest request);
+
+    /**
+     * Delete sprint from both TrackSpace and Jira
+     */
+    void deleteSprint(Integer sprintId);
 }

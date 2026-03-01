@@ -36,4 +36,25 @@ public interface JiraIssueService {
      * Assign issue to a user
      */
     JiraIssueResponse assignIssue(Integer issueId, Integer assigneeId);
+
+    /**
+     * Assign issue to a Jira user using their accountId (syncs to Jira)
+     */
+    JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName);
+
+    /**
+     * Get assignable users from Jira project
+     */
+    List<Map<String, String>> getAssignableUsers(Integer projectId);
+
+    /**
+     * Update issue fields (summary, description, priority, issueType) and sync to
+     * Jira
+     */
+    JiraIssueResponse updateIssue(Integer issueId, JiraIssueRequest request);
+
+    /**
+     * Delete issue from both TrackSpace and Jira
+     */
+    void deleteIssue(Integer issueId);
 }

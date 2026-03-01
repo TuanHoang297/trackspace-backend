@@ -2,6 +2,7 @@ package com.trackspace.jira.service.impl;
 
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.jira.SprintStatus;
+import com.trackspace.jira.dto.JiraSprintRequest;
 import com.trackspace.jira.dto.JiraSprintResponse;
 import com.trackspace.jira.dto.JiraSyncRequest;
 import com.trackspace.jira.entity.JiraConnection;
@@ -17,16 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/**
- * Implementation of JiraSprintService
- * Handles sprint syncing and retrieval
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -39,82 +35,125 @@ public class JiraSprintServiceImpl implements JiraSprintService {
 
     @Override
     public List<JiraSprintResponse> getSprints(Integer projectId) {
-        log.debug("Getting sprints for project {}", projectId);
-
-        List<JiraSprint> sprints = sprintRepository.findByProjectIdOrderByStartDateDesc(projectId);
-
-        return sprints.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        return sprintRepository.findByProjectIdOrderByStartDateAsc(projectId).stream()
+                .map(this::mapToResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional
     public Map<String, Object> syncSprints(JiraSyncRequest request) {
-        log.info("Starting sprint sync for project {}", request.getProjectId());
-
-        // Get connection
-        JiraConnection connection = connectionRepository.findByProjectId(request.getProjectId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Jira connection not found for project: " + request.getProjectId()));
-
-        // Fetch sprints from Jira
+        JiraConnection conn = getConnection(request.getProjectId());
         List<JiraSprintDto> jiraSprints = jiraApiClient.fetchSprints(
-                connection.getSiteUrl(), connection.getEmail(),
-                connection.getApiTokenEncrypted(), connection.getProjectKey());
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(), conn.getProjectKey());
 
-        int syncedCount = 0;
-        int updatedCount = 0;
-
-        for (JiraSprintDto jiraSprint : jiraSprints) {
-            String externalId = String.valueOf(jiraSprint.getId());
-
-            // Check if sprint exists
-            var existingSprint = sprintRepository.findByJiraSprintId(externalId);
-
-            if (existingSprint.isPresent()) {
-                // Update existing sprint
-                JiraSprint sprint = existingSprint.get();
-                updateSprintFromDto(sprint, jiraSprint);
-                sprintRepository.save(sprint);
-                updatedCount++;
+        int synced = 0, updated = 0;
+        for (JiraSprintDto dto : jiraSprints) {
+            String externalId = String.valueOf(dto.getId());
+            var existing = sprintRepository.findByJiraSprintId(externalId);
+            if (existing.isPresent()) {
+                updateSprintFromDto(existing.get(), dto);
+                sprintRepository.save(existing.get());
+                updated++;
             } else {
-                // Create new sprint
                 JiraSprint sprint = new JiraSprint();
                 sprint.setProjectId(request.getProjectId());
                 sprint.setJiraSprintId(externalId);
-                updateSprintFromDto(sprint, jiraSprint);
+                updateSprintFromDto(sprint, dto);
                 sprintRepository.save(sprint);
-                syncedCount++;
+                synced++;
             }
         }
+        return Map.of("sprintsSynced", synced, "sprintsUpdated", updated);
+    }
 
-        log.info("Sprint sync completed for project {}: {} new, {} updated",
-                request.getProjectId(), syncedCount, updatedCount);
+    @Override
+    @Transactional
+    public JiraSprintResponse createSprint(JiraSprintRequest request) {
+        JiraConnection conn = getConnection(request.getProjectId());
 
-        return Map.of(
-                "sprintsSynced", syncedCount,
-                "sprintsUpdated", updatedCount,
-                "message", String.format("Successfully synced %d new sprints, updated %d",
-                        syncedCount, updatedCount));
+        // Create on Jira first
+        JiraSprintDto jiraSprint = jiraApiClient.createSprint(
+                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                conn.getProjectKey(), request.getName(),
+                request.getStartDate(), request.getEndDate(), request.getGoal());
+
+        // Save locally
+        JiraSprint sprint = new JiraSprint();
+        sprint.setProjectId(request.getProjectId());
+        sprint.setJiraSprintId(String.valueOf(jiraSprint.getId()));
+        sprint.setSprintName(request.getName());
+        sprint.setSprintGoal(request.getGoal());
+        sprint.setStatus(SprintStatus.FUTURE);
+        if (request.getStartDate() != null)
+            sprint.setStartDate(parseLocalDate(request.getStartDate()));
+        if (request.getEndDate() != null)
+            sprint.setEndDate(parseLocalDate(request.getEndDate()));
+        sprintRepository.save(sprint);
+
+        log.info("Created sprint '{}' jiraId={}", sprint.getSprintName(), sprint.getJiraSprintId());
+        return mapToResponse(sprint);
+    }
+
+    @Override
+    @Transactional
+    public JiraSprintResponse updateSprint(Integer sprintId, JiraSprintRequest request) {
+        JiraSprint sprint = sprintRepository.findById(sprintId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint not found: " + sprintId));
+        JiraConnection conn = getConnection(sprint.getProjectId());
+
+        jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                Integer.parseInt(sprint.getJiraSprintId()),
+                request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), null);
+
+        if (request.getName() != null)
+            sprint.setSprintName(request.getName());
+        if (request.getGoal() != null)
+            sprint.setSprintGoal(request.getGoal());
+        if (request.getStartDate() != null)
+            sprint.setStartDate(parseLocalDate(request.getStartDate()));
+        if (request.getEndDate() != null)
+            sprint.setEndDate(parseLocalDate(request.getEndDate()));
+        sprintRepository.save(sprint);
+        return mapToResponse(sprint);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSprint(Integer sprintId) {
+        JiraSprint sprint = sprintRepository.findById(sprintId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint not found: " + sprintId));
+        JiraConnection conn = getConnection(sprint.getProjectId());
+
+        jiraApiClient.deleteSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                Integer.parseInt(sprint.getJiraSprintId()));
+
+        // Move issues to backlog
+        issueRepository.findByProjectIdAndSprintId(sprint.getProjectId(), sprint.getId())
+                .forEach(issue -> {
+                    issue.setSprintId(null);
+                    issueRepository.save(issue);
+                });
+        sprintRepository.delete(sprint);
+        log.info("Deleted sprint '{}'", sprint.getSprintName());
+    }
+
+    // ---- helpers ----
+
+    private JiraConnection getConnection(Integer projectId) {
+        return connectionRepository.findByProjectId(projectId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Jira connection not found for project: " + projectId));
     }
 
     private void updateSprintFromDto(JiraSprint sprint, JiraSprintDto dto) {
         sprint.setSprintName(dto.getName());
         sprint.setSprintGoal(dto.getGoal());
-
-        // Parse status
-        if (dto.getState() != null) {
+        if (dto.getState() != null)
             sprint.setStatus(parseSprintStatus(dto.getState()));
-        }
-
-        // Parse dates
-        if (dto.getStartDate() != null && !dto.getStartDate().isEmpty()) {
+        if (dto.getStartDate() != null && !dto.getStartDate().isEmpty())
             sprint.setStartDate(parseLocalDate(dto.getStartDate()));
-        }
-        if (dto.getEndDate() != null && !dto.getEndDate().isEmpty()) {
+        if (dto.getEndDate() != null && !dto.getEndDate().isEmpty())
             sprint.setEndDate(parseLocalDate(dto.getEndDate()));
-        }
     }
 
     private SprintStatus parseSprintStatus(String state) {
@@ -127,10 +166,8 @@ public class JiraSprintServiceImpl implements JiraSprintService {
 
     private LocalDate parseLocalDate(String dateStr) {
         try {
-            // Jira dates can be ISO-8601 with time, extract just the date part
-            if (dateStr.contains("T")) {
+            if (dateStr.contains("T"))
                 return LocalDate.parse(dateStr.substring(0, 10));
-            }
             return LocalDate.parse(dateStr);
         } catch (Exception e) {
             log.warn("Failed to parse date: {}", dateStr);
@@ -139,24 +176,16 @@ public class JiraSprintServiceImpl implements JiraSprintService {
     }
 
     private JiraSprintResponse mapToResponse(JiraSprint sprint) {
-        long totalIssues = issueRepository.findByProjectIdAndSprintId(
-                sprint.getProjectId(), sprint.getId()).size();
-        long doneIssues = issueRepository.findByProjectIdAndSprintId(
-                sprint.getProjectId(), sprint.getId()).stream()
-                .filter(i -> "Done".equalsIgnoreCase(i.getStatus()))
-                .count();
+        var issues = issueRepository.findByProjectIdAndSprintId(sprint.getProjectId(), sprint.getId());
+        long doneIssues = issues.stream().filter(i -> "Done".equalsIgnoreCase(i.getStatus())).count();
 
         return JiraSprintResponse.builder()
-                .sprintId(sprint.getId())
-                .projectId(sprint.getProjectId())
+                .sprintId(sprint.getId()).projectId(sprint.getProjectId())
                 .jiraSprintId(sprint.getJiraSprintId())
-                .sprintName(sprint.getSprintName())
-                .sprintGoal(sprint.getSprintGoal())
-                .startDate(sprint.getStartDate())
-                .endDate(sprint.getEndDate())
+                .sprintName(sprint.getSprintName()).sprintGoal(sprint.getSprintGoal())
+                .startDate(sprint.getStartDate()).endDate(sprint.getEndDate())
                 .status(sprint.getStatus())
-                .totalIssues(totalIssues)
-                .doneIssues(doneIssues)
+                .totalIssues((long) issues.size()).doneIssues(doneIssues)
                 .build();
     }
 }
