@@ -26,7 +26,11 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        createDefaultAdminIfNotExists();
+        try {
+            createDefaultAdminIfNotExists();
+        } catch (Exception e) {
+            logger.warn("DataInitializer failed (DB may not be ready): {}", e.getMessage());
+        }
     }
 
     /**
@@ -35,19 +39,19 @@ public class DataInitializer implements CommandLineRunner {
     private void createDefaultAdminIfNotExists() {
         // Check if any admin exists
         long adminCount = userRepository.count();
-        
+
         if (adminCount == 0) {
             logger.info("No users found in database. Creating default admin account...");
-            
+
             User admin = new User();
             admin.setEmail("admin@gmail.com");
             admin.setPassword(passwordEncoder.encode("admin123"));
             admin.setFullName("System Administrator");
             admin.setRole(User.Role.ADMIN);
             admin.setActive(true);
-            
+
             userRepository.save(admin);
-            
+
             logger.info("=".repeat(70));
             logger.info("DEFAULT ADMIN ACCOUNT CREATED SUCCESSFULLY!");
             logger.info("Email: admin@gmail.com");

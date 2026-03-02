@@ -44,100 +44,175 @@ public class CommitServiceImpl implements CommitService {
     public Map<String, Object> syncCommits(SyncRequest request) {
         log.info("Starting commit sync for project {}", request.getProjectId());
 
-        // Get connection
-        Connection connection = connectionRepository.findByProjectId(request.getProjectId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "GitHub connection not found for project: " + request.getProjectId()));
-
-        // Parse owner and repo
-        String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
-        String owner = ownerRepo[0];
-        String repo = ownerRepo[1];
-
-        // Determine since timestamp
-        Instant since = request.getSince();
-        if (since == null) {
-            // Use lastSyncAt or 30 days ago
-            since = connection.getLastSyncAt() != null
-                    ? connection.getLastSyncAt()
-                    : Instant.now().minus(Duration.ofDays(30));
+        // Get ALL connections for this project (multi-repo: FE + BE)
+        List<Connection> connections = connectionRepository.findByProjectId(request.getProjectId());
+        if (connections.isEmpty()) {
+            throw new ResourceNotFoundException(
+                    "GitHub connection not found for project: " + request.getProjectId());
         }
 
-        // Determine branch
-        String branch = request.getBranch() != null
-                ? request.getBranch()
-                : connection.getBranchName();
+        int totalSynced = 0;
+        int totalSkipped = 0;
 
-        // Fetch commits from GitHub
-        List<GitHubCommitDto> githubCommits = gitHubApiClient
-                .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
-
-        if (githubCommits == null || githubCommits.isEmpty()) {
-            log.info("No new commits found for project {}", request.getProjectId());
-            return Map.of(
-                    "commitsSynced", 0,
-                    "lastSyncAt", Instant.now(),
-                    "message", "No new commits found");
-        }
-
-        // Process and save commits
-        int syncedCount = 0;
-        int skippedCount = 0;
-
-        for (GitHubCommitDto githubCommit : githubCommits) {
-            // Check if commit already exists
-            if (commitRepository.existsByCommitSha(githubCommit.getSha())) {
-                skippedCount++;
-                continue;
+        for (Connection connection : connections) {
+            if (connection.getStatus() != com.trackspace.github.ConnectionStatus.CONNECTED) {
+                continue; // Skip disconnected repos
             }
 
-            // Get detailed commit info (for stats)
-            GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
-                    .fetchCommitDetails(owner, repo, githubCommit.getSha(), connection.getAccessTokenEncrypted());
+            // Parse owner and repo
+            String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
+            String owner = ownerRepo[0];
+            String repo = ownerRepo[1];
 
-            // Map to entity
-            Commit commit = mapToEntity(githubCommit, detail, connection.getProjectId(), branch);
+            // Pre-load all existing commit SHAs for this project (avoids N individual DB
+            // queries)
+            Set<String> existingShas = new java.util.HashSet<>(
+                    commitRepository.findAllShasByConnectionId(connection.getId()));
+            log.info("Pre-loaded {} existing SHAs for connection {}", existingShas.size(), connection.getId());
 
-            // Save commit
-            commitRepository.save(commit);
-            syncedCount++;
+            // Determine since timestamp
+            Instant since = request.getSince();
+            if (since == null) {
+                // If DB has no commits (e.g. deleted), force full sync regardless of
+                // lastSyncAt
+                if (existingShas.isEmpty()) {
+                    since = Instant.now().minus(Duration.ofDays(365));
+                    log.info("No commits in DB for project {} — forcing full sync (365 days)",
+                            connection.getProjectId());
+                } else {
+                    since = connection.getLastSyncAt() != null
+                            ? connection.getLastSyncAt()
+                            : Instant.now().minus(Duration.ofDays(365));
+                }
+            }
+
+            // Determine branches to sync (all branches if not specified)
+            List<String> branchesToSync = new java.util.ArrayList<>();
+            if (request.getBranch() != null) {
+                branchesToSync.add(request.getBranch());
+            } else {
+                // Fetch ALL branches from GitHub
+                List<GitHubApiClient.GitHubBranchDto> allBranches = gitHubApiClient
+                        .fetchBranches(owner, repo, connection.getAccessTokenEncrypted());
+                if (allBranches.isEmpty()) {
+                    // Fallback to default branch
+                    branchesToSync.add(connection.getBranchName());
+                } else {
+                    // IMPORTANT: Sync default branch FIRST so shared commits get correct branchName
+                    String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
+                    branchesToSync.add(defaultBranch);
+                    for (GitHubApiClient.GitHubBranchDto b : allBranches) {
+                        if (!b.getName().equals(defaultBranch)) {
+                            branchesToSync.add(b.getName());
+                        }
+                    }
+                }
+                log.info("Syncing {} branches for repo {}/{} (default: {})",
+                        branchesToSync.size(), owner, repo, branchesToSync.get(0));
+            }
+
+            // Fetch and save commits for each branch
+            for (String branch : branchesToSync) {
+                List<GitHubCommitDto> githubCommits = gitHubApiClient
+                        .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
+
+                if (githubCommits == null || githubCommits.isEmpty()) {
+                    log.debug("No new commits on branch {} for repo {}/{}", branch, owner, repo);
+                    continue;
+                }
+
+                // Process and save only NEW commits
+                for (GitHubCommitDto githubCommit : githubCommits) {
+                    // Skip if already exists (O(1) check — no DB call)
+                    if (existingShas.contains(githubCommit.getSha())) {
+                        totalSkipped++;
+                        continue;
+                    }
+
+                    try {
+                        // Fetch detailed stats (lines added/deleted, files changed)
+                        // List API does NOT return stats — only detail endpoint does
+                        GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
+                                .fetchCommitDetails(owner, repo, githubCommit.getSha(),
+                                        connection.getAccessTokenEncrypted());
+                        Commit commit = mapToEntity(githubCommit, detail, connection.getProjectId(), connection.getId(),
+                                branch);
+
+                        // Save commit
+                        commitRepository.save(commit);
+                        existingShas.add(githubCommit.getSha()); // Prevent duplicates across branches
+                        totalSynced++;
+                    } catch (Exception e) {
+                        log.warn("Failed to save commit {}: {}", githubCommit.getSha(), e.getMessage());
+                        totalSkipped++;
+                    }
+                }
+            } // end branch loop
+
+            // Update lastSyncAt
+            connection.setLastSyncAt(Instant.now());
+            connectionRepository.save(connection);
+
+            log.info("Synced repo {}/{}: {} commits", owner, repo, totalSynced);
         }
 
-        // Update lastSyncAt
-        connection.setLastSyncAt(Instant.now());
-        connectionRepository.save(connection);
-
         log.info("Commit sync completed for project {}: {} synced, {} skipped",
-                request.getProjectId(), syncedCount, skippedCount);
+                request.getProjectId(), totalSynced, totalSkipped);
 
         return Map.of(
-                "commitsSynced", syncedCount,
-                "commitsSkipped", skippedCount,
-                "lastSyncAt", connection.getLastSyncAt(),
-                "message", String.format("Successfully synced %d commits", syncedCount));
+                "commitsSynced", totalSynced,
+                "commitsSkipped", totalSkipped,
+                "lastSyncAt", Instant.now(),
+                "message",
+                String.format("Successfully synced %d commits from %d repos", totalSynced, connections.size()));
     }
 
     @Override
-    public List<CommitResponse> getCommits(Integer projectId, Integer userId, Instant since, Instant until) {
-        log.debug("Getting commits for project {}, user {}", projectId, userId);
+    public List<CommitResponse> getCommits(Integer projectId, Integer connectionId, Integer userId, Instant since,
+            Instant until,
+            String branch) {
+        log.debug("Getting commits for project {}, connection {}, user {}, branch {}", projectId, connectionId, userId,
+                branch);
 
         List<Commit> commits;
 
-        if (userId != null && since != null && until != null) {
-            // Filter by user and date range
-            commits = commitRepository.findByProjectIdAndDateRange(projectId, since, until)
-                    .stream()
-                    .filter(c -> userId.equals(c.getAuthorId()))
-                    .collect(Collectors.toList());
-        } else if (userId != null) {
-            // Filter by user only
-            commits = commitRepository.findByProjectIdAndAuthorId(projectId, userId);
-        } else if (since != null && until != null) {
-            // Filter by date range only
-            commits = commitRepository.findByProjectIdAndDateRange(projectId, since, until);
+        if (connectionId != null) {
+            // ── Connection-scoped queries (per-repo) ──
+            if (branch != null && !branch.isBlank()) {
+                commits = (since != null && until != null)
+                        ? commitRepository.findByConnectionIdAndBranchAndDateRange(connectionId, branch, since, until)
+                        : commitRepository.findByConnectionIdAndBranch(connectionId, branch);
+            } else if (since != null && until != null) {
+                commits = commitRepository.findByConnectionIdAndDateRange(connectionId, since, until);
+            } else if (userId != null) {
+                commits = commitRepository.findByConnectionIdAndAuthorId(connectionId, userId);
+            } else {
+                commits = commitRepository.findByConnectionIdOrderByCommitDateDesc(connectionId);
+            }
+            // Apply user filter in-memory if needed
+            if (userId != null && branch != null) {
+                commits = commits.stream().filter(c -> userId.equals(c.getAuthorId())).collect(Collectors.toList());
+            }
         } else {
-            // Get all commits for project
-            commits = commitRepository.findByProjectIdOrderByCommitDateDesc(projectId);
+            // ── Project-wide queries (legacy / all repos) ──
+            if (branch != null && !branch.isBlank()) {
+                commits = (since != null && until != null)
+                        ? commitRepository.findByProjectIdAndBranchContainingAndDateRange(projectId, branch, since,
+                                until)
+                        : commitRepository.findByProjectIdAndBranchContaining(projectId, branch);
+                if (userId != null) {
+                    commits = commits.stream().filter(c -> userId.equals(c.getAuthorId())).collect(Collectors.toList());
+                }
+            } else if (userId != null && since != null && until != null) {
+                commits = commitRepository.findByProjectIdAndDateRange(projectId, since, until)
+                        .stream().filter(c -> userId.equals(c.getAuthorId())).collect(Collectors.toList());
+            } else if (userId != null) {
+                commits = commitRepository.findByProjectIdAndAuthorId(projectId, userId);
+            } else if (since != null && until != null) {
+                commits = commitRepository.findByProjectIdAndDateRange(projectId, since, until);
+            } else {
+                commits = commitRepository.findByProjectIdOrderByCommitDateDesc(projectId);
+            }
         }
 
         return commits.stream()
@@ -146,20 +221,99 @@ public class CommitServiceImpl implements CommitService {
     }
 
     @Override
-    public List<StatsResponse> getStats(Integer projectId, Integer userId) {
-        log.debug("Calculating stats for project {}, user {}", projectId, userId);
+    public List<StatsResponse> getStats(Integer projectId, Integer connectionId, Integer userId) {
+        log.debug("Calculating stats for project {}, connection {}, user {}", projectId, connectionId, userId);
 
         if (userId != null) {
-            // Get stats for specific user
             return List.of(calculateUserStats(projectId, userId));
         } else {
-            // Get stats for all users
-            List<Object[]> results = commitRepository.getContributionStatsByProject(projectId);
-
-            return results.stream()
-                    .map(this::mapToStatsResponse)
-                    .collect(Collectors.toList());
+            return calculateMergedStats(projectId, connectionId);
         }
+    }
+
+    /**
+     * Smart author merging: same person may use different name/email combos.
+     * Strategy:
+     * 1. Extract GitHub username from noreply emails (e.g.
+     * 12345+TuanHoang297@users.noreply.github.com)
+     * 2. Build identity groups using Union-Find:
+     * - commits with same email → same person
+     * - if noreply email contains username X and another commit has authorName == X
+     * → same person
+     */
+    private List<StatsResponse> calculateMergedStats(Integer projectId, Integer connectionId) {
+        List<Commit> rawCommits = connectionId != null
+                ? commitRepository.findByConnectionIdOrderByCommitDateDesc(connectionId)
+                : commitRepository.findByProjectIdOrderByCommitDateDesc(projectId);
+        if (rawCommits.isEmpty())
+            return List.of();
+
+        // Exclude merge commits (GitHub doesn't count them in contributions)
+        List<Commit> nonMergeCommits = rawCommits.stream()
+                .filter(c -> {
+                    String msg = c.getCommitMessage();
+                    if (msg == null)
+                        return true;
+                    String lower = msg.toLowerCase().trim();
+                    return !lower.startsWith("merge pull request")
+                            && !lower.startsWith("merge branch")
+                            && !lower.startsWith("merge remote");
+                })
+                .collect(Collectors.toList());
+
+        // Group by githubLogin (the actual GitHub account — 100% reliable)
+        // Use ALL commits to collect names, NON-MERGE for stats
+        Map<String, Set<String>> loginToNames = new java.util.LinkedHashMap<>();
+        for (Commit c : rawCommits) {
+            String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
+                    : (c.getAuthorEmail() != null ? c.getAuthorEmail().toLowerCase() : "unknown");
+            String name = c.getAuthorName() != null ? c.getAuthorName().trim() : "Unknown";
+            loginToNames.computeIfAbsent(login, k -> new java.util.HashSet<>()).add(name);
+        }
+
+        Map<String, List<Commit>> groups = new java.util.LinkedHashMap<>();
+        for (Commit c : nonMergeCommits) {
+            String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
+                    : (c.getAuthorEmail() != null ? c.getAuthorEmail().toLowerCase() : "unknown");
+            groups.computeIfAbsent(login, k -> new java.util.ArrayList<>()).add(c);
+        }
+
+        // Build stats per GitHub account
+        List<StatsResponse> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, List<Commit>> entry : groups.entrySet()) {
+            List<Commit> groupCommits = entry.getValue();
+            Set<String> names = loginToNames.getOrDefault(entry.getKey(), Set.of());
+
+            // Prefer full name (contains space) over username
+            String displayName = names.stream()
+                    .filter(n -> n.contains(" "))
+                    .max(java.util.Comparator.comparingInt(String::length))
+                    .orElse(names.stream()
+                            .max(java.util.Comparator.comparingInt(String::length))
+                            .orElse("Unknown"));
+
+            long totalAdded = groupCommits.stream().mapToLong(c -> c.getLinesAdded() != null ? c.getLinesAdded() : 0)
+                    .sum();
+            long totalDeleted = groupCommits.stream()
+                    .mapToLong(c -> c.getLinesDeleted() != null ? c.getLinesDeleted() : 0).sum();
+            Instant lastCommit = groupCommits.stream().map(Commit::getCommitDate).filter(d -> d != null)
+                    .max(Instant::compareTo).orElse(null);
+
+            result.add(StatsResponse.builder()
+                    .userId(null)
+                    .userName(displayName)
+                    .githubLogin(entry.getKey())
+                    .totalCommits((long) groupCommits.size())
+                    .totalLinesAdded(totalAdded)
+                    .totalLinesDeleted(totalDeleted)
+                    .totalChanges(totalAdded + totalDeleted)
+                    .lastCommitAt(lastCommit)
+                    .build());
+        }
+
+        // Sort by lines added desc (code contribution)
+        result.sort((a, b) -> Long.compare(b.getTotalLinesAdded(), a.getTotalLinesAdded()));
+        return result;
     }
 
     /**
@@ -168,10 +322,12 @@ public class CommitServiceImpl implements CommitService {
     private Commit mapToEntity(GitHubCommitDto githubCommit,
             GitHubApiClient.GitHubCommitDetailDto detail,
             Integer projectId,
+            Integer connectionId,
             String branch) {
         Commit commit = new Commit();
 
         commit.setProjectId(projectId);
+        commit.setConnectionId(connectionId);
         commit.setCommitSha(githubCommit.getSha());
         commit.setCommitMessage(githubCommit.getCommit().getMessage());
 
@@ -181,6 +337,11 @@ public class CommitServiceImpl implements CommitService {
         commit.setAuthorName(authorName);
         commit.setAuthorEmail(authorEmail);
 
+        // GitHub login (from top-level author object, the actual GitHub account)
+        if (githubCommit.getAuthor() != null && githubCommit.getAuthor().getLogin() != null) {
+            commit.setGithubLogin(githubCommit.getAuthor().getLogin());
+        }
+
         // Map author email to user ID
         commit.setAuthorId(findUserIdByEmail(authorEmail));
 
@@ -188,13 +349,12 @@ public class CommitServiceImpl implements CommitService {
         String dateStr = githubCommit.getCommit().getAuthor().getDate();
         commit.setCommitDate(Instant.parse(dateStr));
 
-        // Stats from detail
+        // Stats from detail API (list API does NOT return stats)
         if (detail != null && detail.getStats() != null) {
-            commit.setLinesAdded(detail.getStats().getAdditions());
-            commit.setLinesDeleted(detail.getStats().getDeletions());
+            commit.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
+            commit.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
             commit.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
         } else {
-            // Fallback to basic stats
             commit.setLinesAdded(0);
             commit.setLinesDeleted(0);
             commit.setFilesChanged(0);
@@ -218,6 +378,7 @@ public class CommitServiceImpl implements CommitService {
                 .commitMessage(commit.getCommitMessage())
                 .authorName(commit.getAuthorName())
                 .authorEmail(commit.getAuthorEmail())
+                .githubLogin(commit.getGithubLogin())
                 .authorId(commit.getAuthorId())
                 .commitDate(commit.getCommitDate())
                 .filesChanged(commit.getFilesChanged())
@@ -269,37 +430,6 @@ public class CommitServiceImpl implements CommitService {
                 .totalLinesAdded(totalAdded)
                 .totalLinesDeleted(totalDeleted)
                 .totalChanges(totalAdded + totalDeleted)
-                .lastCommitAt(lastCommit)
-                .build();
-    }
-
-    /**
-     * Map query result to StatsResponse
-     */
-    private StatsResponse mapToStatsResponse(Object[] result) {
-        Integer authorId = (Integer) result[0];
-        Long count = (Long) result[1];
-        Long additions = (Long) result[2];
-        Long deletions = (Long) result[3];
-
-        // TODO: Get user name from UserRepository
-        String userName = "User " + authorId;
-
-        // Get last commit date
-        Instant lastCommit = commitRepository.findByProjectIdAndAuthorId(
-                commitRepository.findByProjectId((Integer) result[0]).get(0).getProjectId(),
-                authorId).stream()
-                .map(Commit::getCommitDate)
-                .max(Instant::compareTo)
-                .orElse(null);
-
-        return StatsResponse.builder()
-                .userId(authorId)
-                .userName(userName)
-                .totalCommits(count)
-                .totalLinesAdded(additions != null ? additions : 0L)
-                .totalLinesDeleted(deletions != null ? deletions : 0L)
-                .totalChanges((additions != null ? additions : 0L) + (deletions != null ? deletions : 0L))
                 .lastCommitAt(lastCommit)
                 .build();
     }

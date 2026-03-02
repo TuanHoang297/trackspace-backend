@@ -13,7 +13,11 @@ import java.util.Optional;
 
 @Repository
 public interface ConnectionRepository extends JpaRepository<Connection, Integer> {
-    Optional<Connection> findByProjectId(Integer projectId);
+    // Returns all connections for a project (multi-repo support)
+    List<Connection> findByProjectId(Integer projectId);
+
+    // Returns first connection (backward compat)
+    Optional<Connection> findFirstByProjectIdOrderByIdAsc(Integer projectId);
 
     List<Connection> findByStatus(ConnectionStatus status);
 
@@ -21,4 +25,6 @@ public interface ConnectionRepository extends JpaRepository<Connection, Integer>
     List<Connection> findConnectionsNeedingSync(@Param("threshold") Instant threshold);
 
     boolean existsByProjectId(Integer projectId);
+
+    boolean existsByProjectIdAndRepositoryUrl(Integer projectId, String repositoryUrl);
 }

@@ -196,6 +196,46 @@ public class GitHubApiClient {
     }
 
     /**
+     * Fetch all branches from a GitHub repository
+     *
+     * @param owner GitHub repository owner
+     * @param repo  GitHub repository name
+     * @param token GitHub personal access token
+     * @return List of branches
+     */
+    public List<GitHubBranchDto> fetchBranches(String owner, String repo, String token) {
+        log.info("Fetching branches from {}/{}", owner, repo);
+
+        try {
+            HttpHeaders headers = createHeaders(token);
+            HttpEntity<?> entity = new HttpEntity<>(headers);
+
+            String url = UriComponentsBuilder
+                    .fromPath("/repos/{owner}/{repo}/branches")
+                    .queryParam("per_page", 100)
+                    .buildAndExpand(owner, repo)
+                    .toUriString();
+
+            ResponseEntity<GitHubBranchDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    GitHubBranchDto[].class);
+
+            List<GitHubBranchDto> branches = response.getBody() != null
+                    ? Arrays.asList(response.getBody())
+                    : Collections.emptyList();
+
+            log.info("Fetched {} branches from {}/{}", branches.size(), owner, repo);
+            return branches;
+
+        } catch (RestClientException ex) {
+            log.error("Error fetching branches from {}/{}: {}", owner, repo, ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * Create HTTP headers for GitHub API requests
      * 
      * @param token GitHub personal access token
@@ -301,6 +341,22 @@ public class GitHubApiClient {
         @Data
         public static class Owner {
             private String login;
+        }
+    }
+
+    @Data
+    public static class GitHubBranchDto {
+        private String name;
+
+        @JsonProperty("protected")
+        private Boolean isProtected;
+
+        private BranchCommit commit;
+
+        @Data
+        public static class BranchCommit {
+            private String sha;
+            private String url;
         }
     }
 }

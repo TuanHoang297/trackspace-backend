@@ -14,6 +14,7 @@ import java.time.Instant;
 public class StatsResponse {
     private Integer userId;
     private String userName;
+    private String githubLogin;
     private Long totalCommits;
     private Long totalLinesAdded;
     private Long totalLinesDeleted;

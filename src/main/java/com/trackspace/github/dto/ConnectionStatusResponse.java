@@ -20,4 +20,5 @@ public class ConnectionStatusResponse {
     private ConnectionStatus connectionStatus;
     private Instant lastSyncAt;
     private Long totalCommits;
+    private String repoLabel;
 }

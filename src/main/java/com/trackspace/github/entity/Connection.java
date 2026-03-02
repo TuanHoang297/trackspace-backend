@@ -29,6 +29,10 @@ public class Connection {
     @Column(name = "repository_url", nullable = false, length = 500)
     private String repositoryUrl;
 
+    @Size(max = 20)
+    @Column(name = "repo_label", length = 20)
+    private String repoLabel; // "FRONTEND" or "BACKEND"
+
     @Size(max = 100)
     @NotNull
     @Column(name = "branch_name", nullable = false, length = 100)

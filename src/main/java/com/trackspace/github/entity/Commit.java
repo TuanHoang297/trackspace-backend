@@ -23,14 +23,16 @@ public class Commit {
     @Column(name = "project_id", nullable = false)
     private Integer projectId;
 
+    @Column(name = "connection_id")
+    private Integer connectionId;
+
     @Size(max = 100)
     @NotNull
     @Column(name = "commit_sha", nullable = false, length = 100)
     private String commitSha;
 
     @NotNull
-    @Lob
-    @Column(name = "commit_message", nullable = false)
+    @Column(name = "commit_message", nullable = false, columnDefinition = "TEXT")
     private String commitMessage;
 
     @Size(max = 255)
@@ -41,6 +43,10 @@ public class Commit {
     @Size(max = 255)
     @Column(name = "author_email")
     private String authorEmail;
+
+    @Size(max = 100)
+    @Column(name = "github_login", length = 100)
+    private String githubLogin;
 
     @Column(name = "author_id")
     private Integer authorId;
@@ -58,8 +64,7 @@ public class Commit {
     @Column(name = "lines_deleted", columnDefinition = "int UNSIGNED")
     private Integer linesDeleted;
 
-    @Size(max = 100)
-    @Column(name = "branch_name", length = 100)
+    @Column(name = "branch_name", columnDefinition = "TEXT")
     private String branchName;
 
     @Column(name = "linked_issue_id")

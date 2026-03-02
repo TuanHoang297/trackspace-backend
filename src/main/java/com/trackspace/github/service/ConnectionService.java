@@ -38,4 +38,17 @@ public interface ConnectionService {
      * @return true if connected
      */
     boolean isConnected(Integer projectId);
+
+    /**
+     * Get the raw connection entity for a project
+     *
+     * @param projectId Project ID
+     * @return Connection entity
+     */
+    com.trackspace.github.entity.Connection getConnection(Integer projectId);
+
+    /**
+     * Get ALL connections for a project (multi-repo)
+     */
+    java.util.List<ConnectionStatusResponse> getConnections(Integer projectId);
 }

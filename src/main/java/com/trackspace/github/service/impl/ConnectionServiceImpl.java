@@ -15,10 +15,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Implementation of ConnectionService
  * Handles GitHub repository connection management
+ * Supports multiple repos per project (FE + BE)
  */
 @Service
 @RequiredArgsConstructor
@@ -34,9 +36,23 @@ public class ConnectionServiceImpl implements ConnectionService {
     public ConnectionStatusResponse connectRepository(ConnectionRequest request) {
         log.info("Connecting GitHub repository for project {}", request.getProjectId());
 
-        // Check if connection already exists
-        if (connectionRepository.existsByProjectId(request.getProjectId())) {
-            throw new IllegalStateException("GitHub connection already exists for this project");
+        // Check if THIS EXACT REPO already has a connection — reconnect if disconnected
+        List<Connection> existing = connectionRepository.findByProjectId(request.getProjectId());
+        Connection existingConn = existing.stream()
+                .filter(c -> request.getRepositoryUrl().equals(c.getRepositoryUrl()))
+                .findFirst().orElse(null);
+        if (existingConn != null) {
+            if (existingConn.getStatus() == ConnectionStatus.CONNECTED) {
+                // Already connected — just return current status
+                return buildConnectionStatusResponse(existingConn);
+            }
+            // Reconnect: update token and set status back
+            existingConn.setAccessTokenEncrypted(request.getAccessToken());
+            existingConn.setStatus(ConnectionStatus.CONNECTED);
+            existingConn.setUpdatedAt(Instant.now());
+            Connection saved = connectionRepository.save(existingConn);
+            log.info("Reconnected existing GitHub repository for project {}", request.getProjectId());
+            return buildConnectionStatusResponse(saved);
         }
 
         // Parse owner and repo from URL
@@ -59,18 +75,19 @@ public class ConnectionServiceImpl implements ConnectionService {
             branchName = repoInfo != null ? repoInfo.getDefaultBranch() : "main";
         }
 
-        // Create connection entity
         Connection connection = new Connection();
         connection.setProjectId(request.getProjectId());
         connection.setRepositoryUrl(request.getRepositoryUrl());
+        connection.setRepoLabel(request.getRepoLabel());
         connection.setBranchName(branchName);
-        connection.setAccessTokenEncrypted(request.getAccessToken()); // TODO: Encrypt token
+        connection.setAccessTokenEncrypted(request.getAccessToken());
         connection.setStatus(ConnectionStatus.CONNECTED);
         connection.setLastSyncAt(null);
 
         // Save connection
         Connection saved = connectionRepository.save(connection);
-        log.info("Successfully connected GitHub repository for project {}", request.getProjectId());
+        log.info("Successfully connected GitHub repository {} for project {}",
+                request.getRepositoryUrl(), request.getProjectId());
 
         return buildConnectionStatusResponse(saved);
     }
@@ -79,7 +96,7 @@ public class ConnectionServiceImpl implements ConnectionService {
     public ConnectionStatusResponse getConnectionStatus(Integer projectId) {
         log.debug("Getting connection status for project {}", projectId);
 
-        Connection connection = connectionRepository.findByProjectId(projectId)
+        Connection connection = connectionRepository.findFirstByProjectIdOrderByIdAsc(projectId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("GitHub connection not found for project: " + projectId));
 
@@ -89,32 +106,48 @@ public class ConnectionServiceImpl implements ConnectionService {
     @Override
     @Transactional
     public void disconnectRepository(Integer projectId) {
-        log.info("Disconnecting GitHub repository for project {}", projectId);
+        log.info("Disconnecting ALL GitHub repositories for project {}", projectId);
 
-        Connection connection = connectionRepository.findByProjectId(projectId)
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("GitHub connection not found for project: " + projectId));
+        List<Connection> connections = connectionRepository.findByProjectId(projectId);
+        if (connections.isEmpty()) {
+            throw new ResourceNotFoundException("GitHub connection not found for project: " + projectId);
+        }
 
-        // Update status to disconnected
-        connection.setStatus(ConnectionStatus.DISCONNECTED);
-        connection.setAccessTokenEncrypted(""); // Clear token on disconnect
-        connection.setUpdatedAt(Instant.now());
+        for (Connection connection : connections) {
+            connection.setStatus(ConnectionStatus.DISCONNECTED);
+            connection.setAccessTokenEncrypted(""); // Clear token on disconnect
+            connection.setUpdatedAt(Instant.now());
+            connectionRepository.save(connection);
+        }
 
-        connectionRepository.save(connection);
-        log.info("Successfully disconnected GitHub repository for project {}", projectId);
+        log.info("Successfully disconnected {} GitHub repositories for project {}", connections.size(), projectId);
     }
 
     @Override
     public boolean isConnected(Integer projectId) {
-        return connectionRepository.findByProjectId(projectId)
-                .map(conn -> conn.getStatus() == ConnectionStatus.CONNECTED)
-                .orElse(false);
+        List<Connection> connections = connectionRepository.findByProjectId(projectId);
+        return connections.stream().anyMatch(conn -> conn.getStatus() == ConnectionStatus.CONNECTED);
+    }
+
+    @Override
+    public Connection getConnection(Integer projectId) {
+        return connectionRepository.findFirstByProjectIdOrderByIdAsc(projectId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("GitHub connection not found for project: " + projectId));
+    }
+
+    @Override
+    public List<ConnectionStatusResponse> getConnections(Integer projectId) {
+        List<Connection> connections = connectionRepository.findByProjectId(projectId);
+        return connections.stream()
+                .map(this::buildConnectionStatusResponse)
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /**
      * Parse GitHub repository URL to extract owner and repo name
      * Expected format: https://github.com/owner/repo
-     * 
+     *
      * @param url Repository URL
      * @return Array [owner, repo]
      */
@@ -144,10 +177,8 @@ public class ConnectionServiceImpl implements ConnectionService {
      * Build ConnectionStatusResponse from Connection entity
      */
     private ConnectionStatusResponse buildConnectionStatusResponse(Connection connection) {
-        // Count total commits for this project
-        Long totalCommits = commitRepository.findByProjectId(connection.getProjectId())
-                .stream()
-                .count();
+        // Count commits scoped to this specific connection (not all project commits)
+        Long totalCommits = commitRepository.countByConnectionId(connection.getId());
 
         return ConnectionStatusResponse.builder()
                 .connectionId(connection.getId())
@@ -157,6 +188,7 @@ public class ConnectionServiceImpl implements ConnectionService {
                 .connectionStatus(connection.getStatus())
                 .lastSyncAt(connection.getLastSyncAt())
                 .totalCommits(totalCommits)
+                .repoLabel(connection.getRepoLabel())
                 .build();
     }
 }

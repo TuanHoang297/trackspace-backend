@@ -16,13 +16,13 @@ public class ConnectionRequest {
     private Integer projectId;
 
     @NotBlank(message = "Repository URL is required")
-    @Pattern(regexp = "https://github\\.com/[\\w-]+/[\\w-]+.*",
-            message = "Invalid GitHub repository URL format")
+    @Pattern(regexp = "https://github\\.com/[\\w-]+/[\\w-]+.*", message = "Invalid GitHub repository URL format")
     private String repositoryUrl;
-
 
     @NotBlank(message = "Access token is required")
     private String accessToken;
 
     private String branchName = "main";
+
+    private String repoLabel; // "FRONTEND" or "BACKEND"
 }

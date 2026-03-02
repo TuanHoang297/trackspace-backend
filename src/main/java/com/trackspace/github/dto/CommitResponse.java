@@ -17,6 +17,7 @@ public class CommitResponse {
     private String commitMessage;
     private String authorName;
     private String authorEmail;
+    private String githubLogin;
     private Integer authorId;
     private Instant commitDate;
     private Integer filesChanged;
