@@ -4,6 +4,7 @@ import com.trackspace.common.ApiResponse;
 import com.trackspace.github.service.WebhookService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,16 +12,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+
 /**
  * GitHub Webhook Controller
- *
  * Receives real-time push events from GitHub.
- * To register: GitHub repo → Settings → Webhooks → Add
+ *
+ * Register at: GitHub repo → Settings → Webhooks → Add webhook
  * Payload URL:
  * https://trackspace-db-server-fngwa9fvfqc4d6bk.japaneast-01.azurewebsites.net/api/v1/github/webhook
  * Content type: application/json
  * Secret: value of github.webhook.secret in application.properties
- * Events: Just the push event
  */
 @RestController
 @RequestMapping("/api/v1/github")
@@ -34,21 +36,28 @@ public class GitHubWebhookController {
     @Value("${github.webhook.secret:}")
     private String webhookSecret;
 
-    /**
-     * POST /api/v1/github/webhook
-     * Entry point for GitHub Webhook push events.
-     * Must respond with 200 within 10 seconds — actual sync is done async.
-     */
     @Operation(summary = "GitHub Webhook receiver", description = "Receives push events from GitHub and triggers real-time commit sync asynchronously.")
     @PostMapping("/webhook")
     public ResponseEntity<ApiResponse<String>> handleWebhook(
             @RequestHeader(value = "X-GitHub-Event", defaultValue = "") String event,
             @RequestHeader(value = "X-Hub-Signature-256", defaultValue = "") String signature,
-            @RequestBody byte[] payload) {
+            HttpServletRequest request) {
 
         log.info("[Webhook] Received event: '{}'", event);
 
-        // If a secret is configured, verify the signature
+        // Read raw bytes from HttpServletRequest body
+        // NOTE: Must NOT use @RequestBody — Spring's Jackson would interfere with raw
+        // byte reading
+        byte[] payload;
+        try {
+            payload = request.getInputStream().readAllBytes();
+        } catch (IOException e) {
+            log.error("[Webhook] Failed to read request body", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Failed to read request body"));
+        }
+
+        // Verify HMAC-SHA256 signature if secret is configured
         if (!webhookSecret.isEmpty()) {
             boolean valid = webhookService.verifySignature(payload, signature, webhookSecret);
             if (!valid) {
@@ -64,7 +73,8 @@ public class GitHubWebhookController {
             return ResponseEntity.ok(ApiResponse.success("Event ignored: " + event));
         }
 
-        // Trigger async sync — respond immediately so GitHub doesn't timeout
+        // Trigger async sync — respond immediately so GitHub doesn't timeout (10s
+        // limit)
         String payloadStr = new String(payload, java.nio.charset.StandardCharsets.UTF_8);
         webhookService.handlePushEvent(payloadStr);
 
