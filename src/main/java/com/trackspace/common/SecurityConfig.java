@@ -28,6 +28,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@org.springframework.scheduling.annotation.EnableAsync
 public class SecurityConfig {
 
         @Autowired

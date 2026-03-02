@@ -19,6 +19,14 @@ public interface CommitService {
     Map<String, Object> syncCommits(SyncRequest request);
 
     /**
+     * Sync a single connection (triggered by webhook push event)
+     *
+     * @param connectionId ID of the specific GitHub connection to sync
+     * @return sync result map
+     */
+    Map<String, Object> syncSingleConnection(Integer connectionId);
+
+    /**
      * Get commits for a project (optionally scoped to a single connection/repo)
      * 
      * @param projectId    Project ID

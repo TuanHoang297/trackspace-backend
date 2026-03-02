@@ -168,6 +168,75 @@ public class CommitServiceImpl implements CommitService {
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> syncSingleConnection(Integer connectionId) {
+        log.info("[Webhook] Starting single-connection sync for connectionId={}", connectionId);
+
+        Connection connection = connectionRepository.findById(connectionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Connection not found: " + connectionId));
+
+        if (connection.getStatus() != com.trackspace.github.ConnectionStatus.CONNECTED) {
+            return Map.of("commitsSynced", 0, "message", "Connection is not CONNECTED");
+        }
+
+        String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
+        String owner = ownerRepo[0];
+        String repo = ownerRepo[1];
+
+        Set<String> existingShas = new java.util.HashSet<>(
+                commitRepository.findAllShasByConnectionId(connection.getId()));
+
+        // Sync only from lastSyncAt (or 30 days back if never synced)
+        Instant since = connection.getLastSyncAt() != null
+                ? connection.getLastSyncAt()
+                : Instant.now().minus(Duration.ofDays(30));
+
+        // Fetch all branches
+        List<GitHubApiClient.GitHubBranchDto> allBranches = gitHubApiClient
+                .fetchBranches(owner, repo, connection.getAccessTokenEncrypted());
+        List<String> branchesToSync = new java.util.ArrayList<>();
+        String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
+        branchesToSync.add(defaultBranch);
+        for (GitHubApiClient.GitHubBranchDto b : allBranches) {
+            if (!b.getName().equals(defaultBranch))
+                branchesToSync.add(b.getName());
+        }
+
+        int synced = 0;
+        int skipped = 0;
+        for (String branch : branchesToSync) {
+            List<GitHubCommitDto> githubCommits = gitHubApiClient
+                    .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
+            if (githubCommits == null)
+                continue;
+            for (GitHubCommitDto ghCommit : githubCommits) {
+                if (existingShas.contains(ghCommit.getSha())) {
+                    skipped++;
+                    continue;
+                }
+                try {
+                    GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
+                            .fetchCommitDetails(owner, repo, ghCommit.getSha(), connection.getAccessTokenEncrypted());
+                    commitRepository
+                            .save(mapToEntity(ghCommit, detail, connection.getProjectId(), connection.getId(), branch));
+                    existingShas.add(ghCommit.getSha());
+                    synced++;
+                } catch (Exception e) {
+                    log.warn("[Webhook] Failed to save commit {}: {}", ghCommit.getSha(), e.getMessage());
+                    skipped++;
+                }
+            }
+        }
+
+        connection.setLastSyncAt(Instant.now());
+        connectionRepository.save(connection);
+
+        log.info("[Webhook] Single-connection sync done for {}/{}: {} new commits", owner, repo, synced);
+        return Map.of("commitsSynced", synced, "commitsSkipped", skipped, "lastSyncAt", Instant.now(),
+                "message", String.format("Webhook sync: %d new commits for %s/%s", synced, owner, repo));
+    }
+
+    @Override
     public List<CommitResponse> getCommits(Integer projectId, Integer connectionId, Integer userId, Instant since,
             Instant until,
             String branch) {
