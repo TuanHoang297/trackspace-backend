@@ -417,7 +417,6 @@ public class JiraIssueServiceImpl implements JiraIssueService {
     }
 
     @Override
-    @Transactional
     public void deleteIssue(Integer issueId) {
         JiraIssue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
@@ -426,13 +425,19 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Jira connection not found for project: " + issue.getProjectId()));
 
-        // Delete on Jira
-        jiraApiClient.deleteIssue(
-                conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
-                issue.getIssueKey());
-
+        // Delete locally first (guaranteed to succeed)
         issueRepository.delete(issue);
-        log.info("Deleted issue {}", issue.getIssueKey());
+        log.info("Deleted issue {} from local DB", issue.getIssueKey());
+
+        // Then delete on Jira (best-effort)
+        try {
+            jiraApiClient.deleteIssue(
+                    conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                    issue.getIssueKey());
+            log.info("Deleted issue {} from Jira", issue.getIssueKey());
+        } catch (Exception e) {
+            log.warn("Failed to delete issue {} on Jira (may already be deleted): {}", issue.getIssueKey(), e.getMessage());
+        }
     }
 
     private JiraIssueResponse mapToResponse(JiraIssue issue) {
