@@ -113,4 +113,25 @@ public class AuthService {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadRequestException("Không tìm thấy người dùng"));
     }
+
+    /**
+     * Change password for current user
+     */
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        User user = getCurrentUser();
+
+        // Verify current password
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new BadRequestException("Mật khẩu hiện tại không đúng");
+        }
+
+        // Check new password is different
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPassword())) {
+            throw new BadRequestException("Mật khẩu mới phải khác mật khẩu hiện tại");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
 }

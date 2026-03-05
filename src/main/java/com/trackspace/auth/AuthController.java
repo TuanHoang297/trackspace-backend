@@ -69,6 +69,17 @@ public class AuthController {
     }
 
     /**
+     * Change password endpoint
+     * PUT /api/auth/change-password
+     */
+    @PutMapping("/change-password")
+    @Operation(summary = "Change password", description = "Change password for currently authenticated user")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Đổi mật khẩu thành công", null));
+    }
+
+    /**
      * User Info DTO for /me endpoint
      */
     public record UserInfo(
