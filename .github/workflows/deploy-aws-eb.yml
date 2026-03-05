@@ -34,5 +34,6 @@ jobs:
           application_name: trackspace-backend
           environment_name: trackspace-prod
           region: ap-southeast-1
-          version_label: ${{ github.sha }}
+          version_label: ${{ github.sha }}-${{ github.run_attempt }}
           deployment_package: target/app.jar
+          use_existing_version_if_available: true
