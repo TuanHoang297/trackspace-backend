@@ -101,10 +101,28 @@ public class JiraSprintServiceImpl implements JiraSprintService {
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint not found: " + sprintId));
         JiraConnection conn = getConnection(sprint.getProjectId());
 
-        jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
-                Integer.parseInt(sprint.getJiraSprintId()),
-                request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), null);
+        boolean hasStateChange = request.getStatus() != null
+                && !request.getStatus().equalsIgnoreCase(sprint.getStatus().name());
 
+        if (hasStateChange) {
+            // State change (Start/Complete): MUST succeed on Jira before updating locally
+            String jiraState = request.getStatus().toLowerCase();
+            jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                    Integer.parseInt(sprint.getJiraSprintId()),
+                    request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), jiraState);
+            sprint.setStatus(SprintStatus.valueOf(request.getStatus().toUpperCase()));
+        } else {
+            // Regular field update: try Jira, log warning if fails
+            try {
+                jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                        Integer.parseInt(sprint.getJiraSprintId()),
+                        request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), null);
+            } catch (Exception e) {
+                log.warn("Failed to update sprint on Jira (will still update locally): {}", e.getMessage());
+            }
+        }
+
+        // Update local fields
         if (request.getName() != null)
             sprint.setSprintName(request.getName());
         if (request.getGoal() != null)

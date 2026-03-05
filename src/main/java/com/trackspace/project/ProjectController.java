@@ -100,7 +100,7 @@ public class ProjectController {
     // ==================== Project Info ====================
 
     @PutMapping("/api/projects/{projectId}/info")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Create or update project info",
             description = "Upsert: creates info if not exists, updates if already exists. Used to fill in data for SRS generation.")
     public ResponseEntity<ApiResponse<ProjectInfoResponse>> saveProjectInfo(
@@ -121,7 +121,7 @@ public class ProjectController {
     }
 
     @DeleteMapping("/api/projects/{projectId}/info")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Delete project info")
     public ResponseEntity<ApiResponse<Void>> deleteProjectInfo(
             @PathVariable Long projectId) {

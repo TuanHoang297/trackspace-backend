@@ -22,4 +22,5 @@ public class JiraSprintRequest {
     private String startDate; // ISO format: YYYY-MM-DD
     private String endDate;
     private String goal;
+    private String status; // ACTIVE, CLOSED, FUTURE — optional, for updates only
 }
