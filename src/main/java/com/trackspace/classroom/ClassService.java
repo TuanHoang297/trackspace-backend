@@ -148,6 +148,16 @@ public class ClassService {
     // ==================== Student Management ====================
 
     /**
+     * Get all student IDs enrolled in any active class
+     *
+     * @return List of enrolled student IDs
+     */
+    @Transactional(readOnly = true)
+    public List<Long> getEnrolledStudentIds() {
+        return classStudentRepository.findAllEnrolledStudentIds();
+    }
+
+    /**
      * Get all students enrolled in a class
      *
      * @param classId Class ID

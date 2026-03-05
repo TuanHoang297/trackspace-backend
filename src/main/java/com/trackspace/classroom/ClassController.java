@@ -93,6 +93,15 @@ public class ClassController {
 
         // ==================== Student Enrollment ====================
 
+    @GetMapping("/enrolled-student-ids")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
+    @Operation(summary = "Get enrolled student IDs", description = "Get all student IDs enrolled in any active class")
+    public ResponseEntity<ApiResponse<List<Long>>> getEnrolledStudentIds() {
+        List<Long> ids = classService.getEnrolledStudentIds();
+        return ResponseEntity.ok(
+                ApiResponse.success("Lấy danh sách ID sinh viên đã vào lớp thành công", ids));
+    }
+
         @GetMapping("/{classId}/students")
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Get students in class", description = "Get list of students enrolled in a specific class")

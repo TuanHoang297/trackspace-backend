@@ -41,4 +41,10 @@ public interface ClassStudentRepository extends JpaRepository<ClassStudent, Clas
      */
     @Query("SELECT cs FROM ClassStudent cs JOIN FETCH cs.student WHERE cs.classroom.id = :classId")
     List<ClassStudent> findByClassIdWithStudent(@Param("classId") Long classId);
+
+    /**
+     * Get all student IDs enrolled in any active class
+     */
+    @Query("SELECT DISTINCT cs.student.id FROM ClassStudent cs WHERE cs.classroom.active = true")
+    List<Long> findAllEnrolledStudentIds();
 }
