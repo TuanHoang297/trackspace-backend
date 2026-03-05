@@ -1,0 +1,38 @@
+name: Build and Deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - quang
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Rename JAR to app.jar
+        run: mv target/*.jar target/app.jar
+
+      - name: Deploy to Elastic Beanstalk
+        uses: einaregilsson/beanstalk-deploy@v22
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: trackspace-backend
+          environment_name: trackspace-prod
+          region: ap-southeast-1
+          version_label: ${{ github.sha }}
+          deployment_package: target/app.jar
