@@ -57,7 +57,7 @@ public class StudentController {
 
             workspaces.add(WorkspaceResponse.builder()
                     .classId(classroom.getId())
-                    .className(classroom.getClassName())
+                    .className(classroom.getSubject() != null ? classroom.getSubject().getSubjectName() : null)
                     .groupId(group.getId())
                     .groupName(group.getGroupName())
                     .projectId(project != null ? project.getId() : null)

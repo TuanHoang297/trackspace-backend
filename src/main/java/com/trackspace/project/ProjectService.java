@@ -194,7 +194,7 @@ public class ProjectService {
                 .groupId(group.getId())
                 .groupName(group.getGroupName())
                 .classId(group.getClassroom().getId())
-                .className(group.getClassroom().getClassName())
+                .className(group.getClassroom().getSubject() != null ? group.getClassroom().getSubject().getSubjectName() : null)
                 .hasProjectInfo(hasInfo)
                 .createdAt(project.getCreatedAt())
                 .updatedAt(project.getUpdatedAt())

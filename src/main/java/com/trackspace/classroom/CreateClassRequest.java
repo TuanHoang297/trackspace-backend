@@ -17,20 +17,16 @@ import lombok.NoArgsConstructor;
 @Schema(description = "Create class request payload")
 public class CreateClassRequest {
 
-    @NotBlank(message = "Tên lớp không được để trống")
-    @Size(max = 255, message = "Tên lớp không được vượt quá 255 ký tự")
-    @Schema(description = "Class name", example = "Software Engineering")
-    private String className;
+    @Schema(description = "Subject ID", example = "1")
+    private Long subjectId;
 
-    @NotBlank(message = "Mã lớp không được để trống")
-    @Size(max = 50, message = "Mã lớp không được vượt quá 50 ký tự")
+    @NotBlank(message = "Mã môn không được để trống")
+    @Size(max = 50, message = "Mã môn không được vượt quá 50 ký tự")
     @Schema(description = "Unique class code", example = "SE1801")
     private String classCode;
 
-    @NotBlank(message = "Học kỳ không được để trống")
-    @Size(max = 50, message = "Học kỳ không được vượt quá 50 ký tự")
-    @Schema(description = "Semester", example = "Spring 2026")
-    private String semester;
+    @Schema(description = "Semester ID", example = "1")
+    private Long semesterId;
 
     @Schema(description = "Lecturer user ID to assign to this class", example = "5")
     private Long lecturerId;

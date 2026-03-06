@@ -222,7 +222,7 @@ public class GroupService {
                 .groupName(group.getGroupName())
                 .description(group.getDescription())
                 .classId(group.getClassroom().getId())
-                .className(group.getClassroom().getClassName())
+                .className(group.getClassroom().getSubject() != null ? group.getClassroom().getSubject().getSubjectName() : null)
                 .teamLeaderId(leader != null ? leader.getId() : null)
                 .teamLeaderName(leader != null ? leader.getFullName() : null)
                 .teamLeaderEmail(leader != null ? leader.getEmail() : null)
