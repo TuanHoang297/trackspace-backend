@@ -102,6 +102,15 @@ public class ClassController {
                 ApiResponse.success("Lấy danh sách ID sinh viên đã vào lớp thành công", ids));
     }
 
+    @GetMapping("/{classId}/enrolled-student-ids")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
+    @Operation(summary = "Get enrolled student IDs by subject+semester", description = "Get student IDs enrolled in classes with same subject and semester as given class")
+    public ResponseEntity<ApiResponse<List<Long>>> getEnrolledStudentIdsByClass(@PathVariable Long classId) {
+        List<Long> ids = classService.getEnrolledStudentIdsByClass(classId);
+        return ResponseEntity.ok(
+                ApiResponse.success("Lấy danh sách ID sinh viên đã đăng ký thành công", ids));
+    }
+
         @GetMapping("/{classId}/students")
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Get students in class", description = "Get list of students enrolled in a specific class")

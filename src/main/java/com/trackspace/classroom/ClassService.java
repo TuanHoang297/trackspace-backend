@@ -163,6 +163,19 @@ public class ClassService {
     }
 
     /**
+     * Get student IDs enrolled in any active class with same subject and semester as given class
+     */
+    @Transactional(readOnly = true)
+    public List<Long> getEnrolledStudentIdsByClass(Long classId) {
+        Class aClass = findActiveClassById(classId);
+        if (aClass.getSubject() == null || aClass.getSemester() == null) {
+            return List.of();
+        }
+        return classStudentRepository.findStudentIdsBySubjectAndSemester(
+                aClass.getSubject().getId(), aClass.getSemester().getId());
+    }
+
+    /**
      * Get all students enrolled in a class
      *
      * @param classId Class ID
@@ -190,6 +203,14 @@ public class ClassService {
 
         if (classStudentRepository.existsByClassroomIdAndStudentId(classId, studentId)) {
             throw new BadRequestException("Sinh viên đã được thêm vào lớp này");
+        }
+
+        // Check if student is already enrolled in another class with the same subject and semester
+        if (aClass.getSubject() != null && aClass.getSemester() != null &&
+            classStudentRepository.existsByStudentAndSubjectAndSemester(
+                    studentId, aClass.getSubject().getId(), aClass.getSemester().getId())) {
+            throw new BadRequestException("Sinh viên đã được đăng ký vào một lớp khác của môn "
+                    + aClass.getSubject().getSubjectName() + " trong học kỳ này");
         }
 
         ClassStudent classStudent = ClassStudent.builder()

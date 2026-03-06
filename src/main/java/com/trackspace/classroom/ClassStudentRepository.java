@@ -47,4 +47,28 @@ public interface ClassStudentRepository extends JpaRepository<ClassStudent, Clas
      */
     @Query("SELECT DISTINCT cs.student.id FROM ClassStudent cs WHERE cs.classroom.active = true")
     List<Long> findAllEnrolledStudentIds();
+
+    /**
+     * Check if a student is already enrolled in another active class with the same subject and semester
+     */
+    @Query("SELECT COUNT(cs) > 0 FROM ClassStudent cs " +
+           "WHERE cs.student.id = :studentId " +
+           "AND cs.classroom.subject.id = :subjectId " +
+           "AND cs.classroom.semester.id = :semesterId " +
+           "AND cs.classroom.active = true")
+    boolean existsByStudentAndSubjectAndSemester(
+            @Param("studentId") Long studentId,
+            @Param("subjectId") Long subjectId,
+            @Param("semesterId") Long semesterId);
+
+    /**
+     * Get all student IDs enrolled in active classes with the same subject and semester
+     */
+    @Query("SELECT DISTINCT cs.student.id FROM ClassStudent cs " +
+           "WHERE cs.classroom.subject.id = :subjectId " +
+           "AND cs.classroom.semester.id = :semesterId " +
+           "AND cs.classroom.active = true")
+    List<Long> findStudentIdsBySubjectAndSemester(
+            @Param("subjectId") Long subjectId,
+            @Param("semesterId") Long semesterId);
 }
