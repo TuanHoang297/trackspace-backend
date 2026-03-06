@@ -3,7 +3,7 @@ name: Build and Deploy to AWS Elastic Beanstalk
 on:
   push:
     branches:
-      - quang
+      - main
   workflow_dispatch:
 
 jobs:
