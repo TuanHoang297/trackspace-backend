@@ -410,6 +410,28 @@ public class JiraIssueServiceImpl implements JiraIssueService {
             issue.setIssueType(parseIssueType(request.getIssueType()));
         if (request.getDueDate() != null)
             issue.setDueDate(request.getDueDate());
+
+        // Handle sprint change (drag-and-drop between sprints)
+        if (request.getSprintId() != null && !request.getSprintId().equals(issue.getSprintId())) {
+            issue.setSprintId(request.getSprintId());
+            // Move on Jira Cloud too
+            JiraSprint targetSprint = sprintRepository.findById(request.getSprintId()).orElse(null);
+            if (targetSprint != null && targetSprint.getJiraSprintId() != null) {
+                try {
+                    jiraApiClient.moveIssueToSprint(
+                            conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                            targetSprint.getJiraSprintId(), issue.getIssueKey());
+                    log.info("Moved issue {} to sprint {} on Jira", issue.getIssueKey(), targetSprint.getSprintName());
+                } catch (Exception ex) {
+                    log.warn("Failed to move issue {} to sprint on Jira: {}", issue.getIssueKey(), ex.getMessage());
+                }
+            }
+        } else if (request.getSprintId() == null && issue.getSprintId() != null) {
+            // Move to backlog (clear sprint)
+            issue.setSprintId(null);
+            log.info("Moved issue {} to backlog", issue.getIssueKey());
+        }
+
         issueRepository.save(issue);
 
         log.info("Updated issue {}", issue.getIssueKey());

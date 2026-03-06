@@ -106,7 +106,7 @@ public class GroupController {
     // ==================== Member Management ====================
 
     @GetMapping("/{groupId}/members")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
     @Operation(summary = "Get group members", description = "Get list of all members in a group")
     public ResponseEntity<ApiResponse<List<GroupMemberResponse>>> getGroupMembers(
             @PathVariable Long classId,
