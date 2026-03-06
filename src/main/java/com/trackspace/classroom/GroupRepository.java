@@ -17,7 +17,7 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
 
     List<Group> findByClassroomIdAndActiveTrue(Long classId);
 
-    boolean existsByClassroomIdAndGroupName(Long classId, String groupName);
+    boolean existsByClassroomIdAndGroupNameAndActiveTrue(Long classId, String groupName);
 
     Optional<Group> findByIdAndActiveTrue(Long groupId);
 

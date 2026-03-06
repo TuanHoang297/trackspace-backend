@@ -84,7 +84,7 @@ public class ClassService {
         List<Class> classes;
 
         if (currentUser.getRole() == User.Role.ADMIN) {
-            classes = classRepository.findByActiveTrue();
+            classes = classRepository.findAll();
         } else {
             classes = classRepository.findByLecturerIdAndActiveTrue(currentUser.getId());
         }

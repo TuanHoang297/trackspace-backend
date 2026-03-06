@@ -33,4 +33,9 @@ public interface ClassRepository extends JpaRepository<Class, Long> {
      */
     Optional<Class> findByIdAndActiveTrue(Long id);
 
+    /**
+     * Count active classes in a semester
+     */
+    long countBySemesterIdAndActiveTrue(Long semesterId);
+
 }

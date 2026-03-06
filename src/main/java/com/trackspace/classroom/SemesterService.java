@@ -13,6 +13,7 @@ import java.util.List;
 public class SemesterService {
 
     private final SemesterRepository semesterRepository;
+    private final ClassRepository classRepository;
 
     @Transactional(readOnly = true)
     public List<SemesterResponse> getAllActiveSemesters() {
@@ -55,6 +56,11 @@ public class SemesterService {
     @Transactional
     public void deleteSemester(Long id) {
         Semester semester = findById(id);
+        long classCount = classRepository.countBySemesterIdAndActiveTrue(id);
+        if (classCount > 0) {
+            throw new BadRequestException("Không thể xóa học kỳ '" + semester.getName()
+                    + "' vì đang có " + classCount + " lớp học liên kết");
+        }
         semesterRepository.delete(semester);
     }
 

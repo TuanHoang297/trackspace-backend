@@ -14,13 +14,7 @@ import java.time.LocalDateTime;
  * Represents a student project group within a class
  */
 @Entity
-@Table(
-        name = "`groups`",
-        uniqueConstraints = @UniqueConstraint(
-                columnNames = {"class_id", "group_name"},
-                name = "uq_class_group_name"
-        )
-)
+@Table(name = "`groups`")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

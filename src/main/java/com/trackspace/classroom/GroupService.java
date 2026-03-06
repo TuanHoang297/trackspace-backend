@@ -34,7 +34,7 @@ public class GroupService {
     public GroupResponse createGroup(Long classId, CreateGroupRequest request) {
         Class aClass = findActiveClassById(classId);
 
-        if (groupRepository.existsByClassroomIdAndGroupName(classId, request.getGroupName())) {
+        if (groupRepository.existsByClassroomIdAndGroupNameAndActiveTrue(classId, request.getGroupName())) {
             throw new BadRequestException("Tên nhóm '" + request.getGroupName() + "' đã tồn tại trong lớp này");
         }
 
@@ -72,7 +72,7 @@ public class GroupService {
 
         if (request.getGroupName() != null && !request.getGroupName().isBlank()) {
             if (!request.getGroupName().equals(group.getGroupName())
-                    && groupRepository.existsByClassroomIdAndGroupName(classId, request.getGroupName())) {
+                    && groupRepository.existsByClassroomIdAndGroupNameAndActiveTrue(classId, request.getGroupName())) {
                 throw new BadRequestException("Tên nhóm '" + request.getGroupName() + "' đã tồn tại trong lớp này");
             }
             group.setGroupName(request.getGroupName());
