@@ -26,14 +26,16 @@ public class Class {
     @Column(name = "class_id")
     private Long id;
 
-    @Column(name = "class_name", nullable = false, length = 255)
-    private String className;
-
     @Column(name = "class_code", unique = true, nullable = false, length = 50)
     private String classCode;
 
-    @Column(nullable = false, length = 50)
-    private String semester;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "subject_id")
+    private Subject subject;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "semester_id")
+    private Semester semester;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lecturer_id")

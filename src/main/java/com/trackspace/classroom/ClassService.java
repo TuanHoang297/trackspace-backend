@@ -22,7 +22,8 @@ public class ClassService {
     private final ClassStudentRepository classStudentRepository;
     private final UserRepository userRepository;
     private final GroupMemberRepository groupMemberRepository;
-
+    private final SemesterRepository semesterRepository;
+    private final SubjectRepository subjectRepository;
     private static final String CLASS_NOT_FOUND = "Không tìm thấy lớp học với ID: %d";
     private static final String USER_NOT_FOUND = "Không tìm thấy người dùng với ID: %d";
 
@@ -40,11 +41,15 @@ public class ClassService {
             throw new BadRequestException("Mã lớp '" + request.getClassCode() + "' đã tồn tại");
         }
         Class newClass = Class.builder()
-                .className(request.getClassName())
                 .classCode(request.getClassCode())
-                .semester(request.getSemester())
                 .active(true)
                 .build();
+        if (request.getSubjectId() != null) {
+            newClass.setSubject(findSubjectById(request.getSubjectId()));
+        }
+        if (request.getSemesterId() != null) {
+            newClass.setSemester(findSemesterById(request.getSemesterId()));
+        }
         if (request.getLecturerId() != null) {
             newClass.setLecturer(findLecturerById(request.getLecturerId()));
         }
@@ -119,11 +124,11 @@ public class ClassService {
     }
 
     private void applyUpdates(Class aClass, UpdateClassRequest request) {
-        if (request.getClassName() != null && !request.getClassName().isBlank()) {
-            aClass.setClassName(request.getClassName());
+        if (request.getSubjectId() != null) {
+            aClass.setSubject(findSubjectById(request.getSubjectId()));
         }
-        if (request.getSemester() != null && !request.getSemester().isBlank()) {
-            aClass.setSemester(request.getSemester());
+        if (request.getSemesterId() != null) {
+            aClass.setSemester(findSemesterById(request.getSemesterId()));
         }
         if (request.getActive() != null) {
             aClass.setActive(request.getActive());
@@ -204,6 +209,16 @@ public class ClassService {
 
     // ==================== Helper Methods ====================
 
+    private Subject findSubjectById(Long subjectId) {
+        return subjectRepository.findById(subjectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy môn học với ID: " + subjectId));
+    }
+
+    private Semester findSemesterById(Long semesterId) {
+        return semesterRepository.findById(semesterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy học kỳ với ID: " + semesterId));
+    }
+
     private Class findActiveClassById(Long classId) {
         return classRepository.findByIdAndActiveTrue(classId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -232,11 +247,16 @@ public class ClassService {
 
     private ClassResponse buildClassResponse(Class aClass, long studentCount) {
         User lecturer = aClass.getLecturer();
+        Semester semester = aClass.getSemester();
+        Subject subject = aClass.getSubject();
         return ClassResponse.builder()
                 .id(aClass.getId())
-                .className(aClass.getClassName())
+                .subjectId(subject != null ? subject.getId() : null)
+                .subjectCode(subject != null ? subject.getSubjectCode() : null)
+                .subjectName(subject != null ? subject.getSubjectName() : null)
                 .classCode(aClass.getClassCode())
-                .semester(aClass.getSemester())
+                .semesterId(semester != null ? semester.getId() : null)
+                .semesterName(semester != null ? semester.getName() : null)
                 .lecturerId(lecturer != null ? lecturer.getId() : null)
                 .lecturerName(lecturer != null ? lecturer.getFullName() : null)
                 .lecturerEmail(lecturer != null ? lecturer.getEmail() : null)

@@ -1,7 +1,6 @@
 package com.trackspace.classroom;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,13 +15,11 @@ import lombok.NoArgsConstructor;
 @Schema(description = "Update class request payload")
 public class UpdateClassRequest {
 
-    @Size(max = 255, message = "Tên lớp không được vượt quá 255 ký tự")
-    @Schema(description = "New class name", example = "Software Engineering Updated")
-    private String className;
+    @Schema(description = "Subject ID", example = "1")
+    private Long subjectId;
 
-    @Size(max = 50, message = "Học kỳ không được vượt quá 50 ký tự")
-    @Schema(description = "Semester", example = "Fall 2026")
-    private String semester;
+    @Schema(description = "Semester ID", example = "1")
+    private Long semesterId;
 
     @Schema(description = "Active status of the class", example = "true")
     private Boolean active;
