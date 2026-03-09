@@ -259,7 +259,8 @@ public class GitHubApiClient {
     public static class GitHubCommitDto {
         private String sha;
         private CommitInfo commit;
-        private Author author;
+        private Author author;      // top-level GitHub user (author)
+        private Author committer;   // top-level GitHub user (committer) — fallback when author is null
         private Stats stats;
 
         @Data

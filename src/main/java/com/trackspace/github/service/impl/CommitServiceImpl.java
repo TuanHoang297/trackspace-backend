@@ -407,8 +407,11 @@ public class CommitServiceImpl implements CommitService {
         commit.setAuthorEmail(authorEmail);
 
         // GitHub login (from top-level author object, the actual GitHub account)
+        // Fallback: if author is null (email not matching any GitHub account), try committer
         if (githubCommit.getAuthor() != null && githubCommit.getAuthor().getLogin() != null) {
             commit.setGithubLogin(githubCommit.getAuthor().getLogin());
+        } else if (githubCommit.getCommitter() != null && githubCommit.getCommitter().getLogin() != null) {
+            commit.setGithubLogin(githubCommit.getCommitter().getLogin());
         }
 
         // Map author email to user ID
