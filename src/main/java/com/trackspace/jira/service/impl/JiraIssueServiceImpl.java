@@ -63,31 +63,81 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Jira connection not found for project: " + request.getProjectId()));
 
-        // Fetch issues from Jira
-        List<JiraIssueDto> jiraIssues = jiraApiClient.fetchIssues(
-                connection.getSiteUrl(), connection.getEmail(),
-                connection.getApiTokenEncrypted(), connection.getProjectKey());
+        String siteUrl = connection.getSiteUrl();
+        String email = connection.getEmail();
+        String token = connection.getApiTokenEncrypted();
+        String projectKey = connection.getProjectKey();
+        Integer projectId = request.getProjectId();
 
+        // === PARALLEL: Fetch issues AND sprint mappings simultaneously ===
+        var issuesFuture = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                jiraApiClient.fetchIssues(siteUrl, email, token, projectKey));
+
+        // Fetch sprint-issue mappings for ALL sprints in parallel
+        List<JiraSprint> localSprints = sprintRepository.findByProjectIdOrderByStartDateDesc(projectId);
+        Map<String, List<String>> sprintIssueMap = new java.util.concurrent.ConcurrentHashMap<>();
+        var sprintFutures = localSprints.stream()
+                .map(sprint -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        int jiraSprintIdInt = Integer.parseInt(sprint.getJiraSprintId());
+                        List<String> issueKeys = jiraApiClient.fetchIssueKeysForSprint(
+                                siteUrl, email, token, jiraSprintIdInt);
+                        sprintIssueMap.put(String.valueOf(sprint.getId()), issueKeys);
+                    } catch (Exception e) {
+                        log.debug("Sprint fetch failed for {}: {}", sprint.getSprintName(), e.getMessage());
+                    }
+                }))
+                .collect(Collectors.toList());
+
+        // Wait for ALL to complete (issues + all sprint fetches)
+        List<JiraIssueDto> jiraIssues;
+        try {
+            var allSprintsFuture = java.util.concurrent.CompletableFuture.allOf(
+                    sprintFutures.toArray(new java.util.concurrent.CompletableFuture[0]));
+            java.util.concurrent.CompletableFuture.allOf(issuesFuture, allSprintsFuture)
+                    .get(60, java.util.concurrent.TimeUnit.SECONDS);
+            jiraIssues = issuesFuture.get();
+        } catch (Exception e) {
+            log.warn("Parallel fetch failed, falling back: {}", e.getMessage());
+            jiraIssues = jiraApiClient.fetchIssues(siteUrl, email, token, projectKey);
+        }
+
+        // Build reverse map: issueKey → sprintId (local)
+        Map<String, Integer> issueKeyToSprintId = new java.util.HashMap<>();
+        for (JiraSprint sprint : localSprints) {
+            List<String> keys = sprintIssueMap.get(String.valueOf(sprint.getId()));
+            if (keys != null) {
+                for (String key : keys) {
+                    issueKeyToSprintId.put(key, sprint.getId());
+                }
+            }
+        }
+
+        // Save issues with sprint mapping already resolved
         int syncedCount = 0;
         int updatedCount = 0;
-
         for (JiraIssueDto jiraIssue : jiraIssues) {
-            // Check if issue exists
             var existingIssue = issueRepository.findByJiraIssueId(jiraIssue.getId());
 
             if (existingIssue.isPresent()) {
-                // Update existing issue
                 JiraIssue issue = existingIssue.get();
                 updateIssueFromDto(issue, jiraIssue);
+                // Override sprint from Agile API (more reliable)
+                if (issueKeyToSprintId.containsKey(issue.getIssueKey())) {
+                    issue.setSprintId(issueKeyToSprintId.get(issue.getIssueKey()));
+                }
                 issueRepository.save(issue);
                 updatedCount++;
             } else {
-                // Create new issue
                 JiraIssue issue = new JiraIssue();
-                issue.setProjectId(request.getProjectId());
+                issue.setProjectId(projectId);
                 issue.setJiraIssueId(jiraIssue.getId());
                 issue.setIssueKey(jiraIssue.getKey());
                 updateIssueFromDto(issue, jiraIssue);
+                // Override sprint from Agile API (more reliable)
+                if (issueKeyToSprintId.containsKey(jiraIssue.getKey())) {
+                    issue.setSprintId(issueKeyToSprintId.get(jiraIssue.getKey()));
+                }
                 issueRepository.save(issue);
                 syncedCount++;
             }
@@ -97,31 +147,8 @@ public class JiraIssueServiceImpl implements JiraIssueService {
         connection.setLastSyncAt(Instant.now());
         connectionRepository.save(connection);
 
-        // === SECOND PASS: Map issues to sprints using Jira Agile API ===
-        List<JiraSprint> localSprints = sprintRepository.findByProjectIdOrderByStartDateDesc(
-                request.getProjectId());
-        int sprintMapped = 0;
-        for (JiraSprint localSprint : localSprints) {
-            int jiraSprintIdInt = Integer.parseInt(localSprint.getJiraSprintId());
-            List<String> issueKeys = jiraApiClient.fetchIssueKeysForSprint(
-                    connection.getSiteUrl(), connection.getEmail(),
-                    connection.getApiTokenEncrypted(), jiraSprintIdInt);
-
-            log.info("Sprint '{}' (jiraId={}) has {} issues on Jira",
-                    localSprint.getSprintName(), localSprint.getJiraSprintId(), issueKeys.size());
-
-            for (String issueKey : issueKeys) {
-                issueRepository.findByIssueKey(issueKey).ifPresent(issue -> {
-                    issue.setSprintId(localSprint.getId());
-                    issueRepository.save(issue);
-                });
-            }
-            sprintMapped += issueKeys.size();
-        }
-        log.info("Sprint mapping: {} issues mapped to sprints", sprintMapped);
-
-        log.info("Issue sync completed for project {}: {} new, {} updated",
-                request.getProjectId(), syncedCount, updatedCount);
+        log.info("Issue sync completed for project {}: {} new, {} updated, {} sprints mapped",
+                projectId, syncedCount, updatedCount, issueKeyToSprintId.size());
 
         return Map.of(
                 "issuesSynced", syncedCount,

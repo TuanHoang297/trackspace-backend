@@ -86,75 +86,74 @@ public class CommitServiceImpl implements CommitService {
                 }
             }
 
-            // Determine branches to sync (all branches if not specified)
+            // Only sync DEFAULT branch for speed — other branches use real-time API (getCommitsByBranch)
             List<String> branchesToSync = new java.util.ArrayList<>();
             if (request.getBranch() != null) {
                 branchesToSync.add(request.getBranch());
             } else {
-                // Fetch ALL branches from GitHub
-                List<GitHubApiClient.GitHubBranchDto> allBranches = gitHubApiClient
-                        .fetchBranches(owner, repo, connection.getAccessTokenEncrypted());
-                if (allBranches.isEmpty()) {
-                    // Fallback to default branch
-                    branchesToSync.add(connection.getBranchName());
-                } else {
-                    // Sync feature branches FIRST so commits get their original branch name,
-                    // then default branch LAST (only picks up commits unique to main)
-                    String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
-                    for (GitHubApiClient.GitHubBranchDto b : allBranches) {
-                        if (!b.getName().equals(defaultBranch)) {
-                            branchesToSync.add(b.getName());
-                        }
-                    }
-                    branchesToSync.add(defaultBranch); // main goes LAST
-                }
-                log.info("Syncing {} branches for repo {}/{} (default last: {})",
-                        branchesToSync.size(), owner, repo, branchesToSync.get(branchesToSync.size() - 1));
+                String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
+                branchesToSync.add(defaultBranch);
+                log.info("Syncing default branch '{}' for repo {}/{} (other branches via real-time API)",
+                        defaultBranch, owner, repo);
             }
 
-            // Fetch and save commits for each branch
+            // Fetch and save commits INSTANTLY (no detail fetch — stats loaded in background)
+            List<Commit> savedCommits = new java.util.ArrayList<>();
             for (String branch : branchesToSync) {
                 List<GitHubCommitDto> githubCommits = gitHubApiClient
                         .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
 
-                if (githubCommits == null || githubCommits.isEmpty()) {
-                    log.debug("No new commits on branch {} for repo {}/{}", branch, owner, repo);
-                    continue;
-                }
+                if (githubCommits == null || githubCommits.isEmpty()) continue;
 
-                // Process and save only NEW commits
-                for (GitHubCommitDto githubCommit : githubCommits) {
-                    // Skip if already exists (O(1) check — no DB call)
-                    if (existingShas.contains(githubCommit.getSha())) {
-                        totalSkipped++;
-                        continue;
-                    }
-
+                for (GitHubCommitDto ghCommit : githubCommits) {
+                    if (existingShas.contains(ghCommit.getSha())) { totalSkipped++; continue; }
+                    existingShas.add(ghCommit.getSha());
                     try {
-                        // Fetch detailed stats (lines added/deleted, files changed)
-                        // List API does NOT return stats — only detail endpoint does
-                        GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
-                                .fetchCommitDetails(owner, repo, githubCommit.getSha(),
-                                        connection.getAccessTokenEncrypted());
-                        Commit commit = mapToEntity(githubCommit, detail, connection.getProjectId(), connection.getId(),
-                                branch);
-
-                        // Save commit
-                        commitRepository.save(commit);
-                        existingShas.add(githubCommit.getSha()); // Prevent duplicates across branches
+                        Commit commit = mapToEntity(ghCommit, null, connection.getProjectId(), connection.getId(), branch);
+                        savedCommits.add(commitRepository.save(commit));
                         totalSynced++;
                     } catch (Exception e) {
-                        log.warn("Failed to save commit {}: {}", githubCommit.getSha(), e.getMessage());
+                        log.warn("Failed to save commit {}: {}", ghCommit.getSha(), e.getMessage());
                         totalSkipped++;
                     }
                 }
-            } // end branch loop
+            }
 
             // Update lastSyncAt
             connection.setLastSyncAt(Instant.now());
             connectionRepository.save(connection);
+            log.info("Synced repo {}/{}: {} commits (stats loading in background)", owner, repo, totalSynced);
 
-            log.info("Synced repo {}/{}: {} commits", owner, repo, totalSynced);
+            // Background: fetch stats (lines added/deleted/files changed) asynchronously
+            if (!savedCommits.isEmpty()) {
+                String bgOwner = owner, bgRepo = repo;
+                String bgToken = connection.getAccessTokenEncrypted();
+                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    log.info("Background stats fetch started for {} commits (parallel)", savedCommits.size());
+                    // Fetch ALL commit stats in parallel
+                    List<java.util.concurrent.CompletableFuture<Void>> futures = savedCommits.stream()
+                            .map(c -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                                try {
+                                    GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
+                                            .fetchCommitDetails(bgOwner, bgRepo, c.getCommitSha(), bgToken);
+                                    if (detail != null && detail.getStats() != null) {
+                                        c.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
+                                        c.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
+                                        c.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
+                                        commitRepository.save(c);
+                                    }
+                                } catch (Exception e) {
+                                    log.debug("Stats fetch failed for {}: {}", c.getCommitSha(), e.getMessage());
+                                }
+                            }))
+                            .collect(Collectors.toList());
+                    try {
+                        java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                                .get(120, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) { log.debug("Some stats fetches timed out"); }
+                    log.info("Background stats fetch completed for {} commits", savedCommits.size());
+                });
+            }
         }
 
         log.info("Commit sync completed for project {}: {} synced, {} skipped",
