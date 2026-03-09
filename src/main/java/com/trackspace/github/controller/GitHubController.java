@@ -323,10 +323,13 @@ public class GitHubController {
   @Operation(summary = "Get branches", description = "Returns all branches from the connected GitHub repository for the given project.")
   @GetMapping("/branches/{projectId}")
   public ResponseEntity<ApiResponse<List<BranchResponse>>> getBranches(
-      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable Integer projectId) {
+      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable Integer projectId,
+      @Parameter(description = "Filter by connection ID — scopes to a single repo") @RequestParam(required = false) Integer connectionId) {
 
     // Get connection entity (has token + URL)
-    var connection = connectionService.getConnection(projectId);
+    var connection = connectionId != null
+        ? connectionService.getConnectionById(connectionId)
+        : connectionService.getConnection(projectId);
 
     // Parse owner/repo from URL
     String cleanUrl = connection.getRepositoryUrl().replace(".git", "").replace("https://github.com/", "");
