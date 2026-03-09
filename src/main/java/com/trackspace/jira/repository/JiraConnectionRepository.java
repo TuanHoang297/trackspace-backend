@@ -19,6 +19,8 @@ public interface JiraConnectionRepository extends JpaRepository<JiraConnection, 
 
     boolean existsByProjectId(Integer projectId);
 
+    boolean existsByProjectKey(String projectKey);
+
     List<JiraConnection> findByConnectionStatus(JiraConnectionStatus status);
 
     @Query("SELECT jc FROM JiraConnection jc WHERE jc.lastSyncAt < :threshold OR jc.lastSyncAt IS NULL")

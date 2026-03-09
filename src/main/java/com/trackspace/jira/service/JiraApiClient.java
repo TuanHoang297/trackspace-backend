@@ -29,8 +29,9 @@ public class JiraApiClient {
 
     /**
      * Validate connection to Jira Cloud
+     * Throws BadRequestException with specific Jira error if validation fails
      */
-    public boolean validateConnection(String siteUrl, String email, String apiToken, String projectKey) {
+    public void validateConnection(String siteUrl, String email, String apiToken, String projectKey) {
         log.info("Validating Jira connection to {} for project key {}", siteUrl, projectKey);
 
         try {
@@ -41,12 +42,22 @@ public class JiraApiClient {
             ResponseEntity<JiraProjectDto> response = restTemplate.exchange(
                     url, HttpMethod.GET, entity, JiraProjectDto.class);
 
-            log.info("Successfully validated Jira connection for project key {}", projectKey);
-            return response.getStatusCode().is2xxSuccessful();
+            log.info("Successfully validated Jira connection for project key {} (name: {})",
+                    projectKey, response.getBody() != null ? response.getBody().getName() : "unknown");
 
+        } catch (HttpClientErrorException ex) {
+            String msg = switch (ex.getStatusCode().value()) {
+                case 401 -> "Sai email hoặc API token — kiểm tra lại credentials Jira";
+                case 403 -> "Tài khoản không có quyền truy cập project '" + projectKey + "' trên Jira";
+                case 404 -> "Không tìm thấy project key '" + projectKey + "' — kiểm tra lại project key HOẶC API token (token sai cũng gây lỗi này)";
+                default -> "Jira API lỗi (" + ex.getStatusCode().value() + "): " + ex.getResponseBodyAsString();
+            };
+            log.error("Jira validation failed: {} — raw: {}", msg, ex.getResponseBodyAsString());
+            throw new com.trackspace.common.BadRequestException(msg);
         } catch (RestClientException ex) {
-            log.error("Failed to validate Jira connection: {}", ex.getMessage());
-            return false;
+            log.error("Cannot reach Jira: {}", ex.getMessage());
+            throw new com.trackspace.common.BadRequestException(
+                    "Không thể kết nối tới Jira — kiểm tra lại Site URL: " + ex.getMessage());
         }
     }
 
@@ -86,6 +97,12 @@ public class JiraApiClient {
             return Collections.emptyList();
 
         } catch (HttpClientErrorException ex) {
+            String body = ex.getResponseBodyAsString();
+            // Gracefully handle boards that don't support sprints (Kanban, etc.)
+            if (body != null && body.contains("does not support sprints")) {
+                log.warn("Board for project {} does not support sprints — skipping sprint sync", projectKey);
+                return Collections.emptyList();
+            }
             String msg = handleJiraError(ex);
             log.error("Jira API error fetching sprints: {}", msg);
             throw new com.trackspace.common.BadRequestException(msg);

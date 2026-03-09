@@ -327,9 +327,11 @@ public class JiraIssueServiceImpl implements JiraIssueService {
             if (dto.getFields().getAssignee() != null) {
                 issue.setAssigneeName(dto.getFields().getAssignee().getDisplayName());
                 issue.setJiraAccountId(dto.getFields().getAssignee().getAccountId());
+                issue.setAssigneeEmail(dto.getFields().getAssignee().getEmailAddress());
             } else {
                 issue.setAssigneeName(null);
                 issue.setJiraAccountId(null);
+                issue.setAssigneeEmail(null);
             }
         }
     }
@@ -476,6 +478,7 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 .priority(issue.getPriority())
                 .assigneeId(issue.getAssigneeId())
                 .assigneeName(issue.getAssigneeName())
+                .assigneeEmail(issue.getAssigneeEmail())
                 .jiraAccountId(issue.getJiraAccountId())
                 .dueDate(issue.getDueDate())
                 .createdAt(issue.getCreatedAt())

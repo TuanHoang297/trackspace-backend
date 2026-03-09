@@ -56,6 +56,8 @@ public interface CommitRepository extends JpaRepository<Commit, Integer> {
 
         Long countByConnectionId(Integer connectionId);
 
+        void deleteByConnectionId(Integer connectionId);
+
         List<Commit> findByConnectionIdOrderByCommitDateDesc(Integer connectionId);
 
         @Query("SELECT gc.commitSha FROM Commit gc WHERE gc.connectionId = :connectionId")

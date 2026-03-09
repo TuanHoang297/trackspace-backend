@@ -162,6 +162,20 @@ public class GitHubController {
     return ResponseEntity.ok(ApiResponse.success("GitHub repository disconnected successfully", null));
   }
 
+  /**
+   * DELETE /api/v1/github/disconnect/connection/{connectionId}
+   * Disconnect a SINGLE GitHub repository connection
+   */
+  @Operation(summary = "Disconnect single GitHub repository", description = "Disconnects a single GitHub repository by connection ID. Only affects the specified connection, other repos remain connected.")
+  @DeleteMapping("/disconnect/connection/{connectionId}")
+  public ResponseEntity<ApiResponse<Void>> disconnectSingleRepository(
+      @Parameter(description = "ID of the connection to disconnect", required = true) @PathVariable Integer connectionId) {
+
+    log.info("DELETE /api/v1/github/disconnect/connection/{}", connectionId);
+    connectionService.disconnectSingleRepository(connectionId);
+    return ResponseEntity.ok(ApiResponse.success("GitHub repository disconnected successfully", null));
+  }
+
   // ==================== COMMIT ENDPOINTS ====================
 
   /**

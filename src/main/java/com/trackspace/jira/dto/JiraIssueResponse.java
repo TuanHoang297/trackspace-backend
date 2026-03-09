@@ -26,6 +26,7 @@ public class JiraIssueResponse {
     private String priority;
     private Integer assigneeId;
     private String assigneeName;
+    private String assigneeEmail;
     private String jiraAccountId;
     private LocalDate dueDate;
     private Instant createdAt;

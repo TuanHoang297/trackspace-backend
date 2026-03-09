@@ -32,6 +32,11 @@ public interface ConnectionService {
     void disconnectRepository(Integer projectId);
 
     /**
+     * Disconnect a SINGLE GitHub repository by connection ID
+     */
+    void disconnectSingleRepository(Integer connectionId);
+
+    /**
      * Check if a project has an active GitHub connection
      * 
      * @param projectId Project ID
