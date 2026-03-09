@@ -69,6 +69,10 @@ public class JiraIssue {
     private String assigneeName;
 
     @Size(max = 255)
+    @Column(name = "assignee_email")
+    private String assigneeEmail;
+
+    @Size(max = 255)
     @Column(name = "jira_account_id")
     private String jiraAccountId;
 
