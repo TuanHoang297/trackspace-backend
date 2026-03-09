@@ -97,6 +97,9 @@ public class JiraSprintServiceImpl implements JiraSprintService {
     @Override
     @Transactional
     public JiraSprintResponse updateSprint(Integer sprintId, JiraSprintRequest request) {
+        log.info("=== UPDATE SPRINT {} === name={}, startDate={}, endDate={}, goal={}, status={}",
+                sprintId, request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), request.getStatus());
+
         JiraSprint sprint = sprintRepository.findById(sprintId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint not found: " + sprintId));
         JiraConnection conn = getConnection(sprint.getProjectId());
@@ -112,14 +115,12 @@ public class JiraSprintServiceImpl implements JiraSprintService {
                     request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), jiraState);
             sprint.setStatus(SprintStatus.valueOf(request.getStatus().toUpperCase()));
         } else {
-            // Regular field update: try Jira, log warning if fails
-            try {
-                jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
-                        Integer.parseInt(sprint.getJiraSprintId()),
-                        request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), null);
-            } catch (Exception e) {
-                log.warn("Failed to update sprint on Jira (will still update locally): {}", e.getMessage());
-            }
+            // Regular field update: MUST succeed on Jira (Jira requires state even for field-only updates)
+            String currentState = sprint.getStatus().name().toLowerCase();
+            jiraApiClient.updateSprint(conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
+                    Integer.parseInt(sprint.getJiraSprintId()),
+                    request.getName(), request.getStartDate(), request.getEndDate(), request.getGoal(), currentState);
+            log.info("Sprint {} updated on Jira successfully", sprintId);
         }
 
         // Update local fields

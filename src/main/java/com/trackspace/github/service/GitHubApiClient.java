@@ -117,13 +117,18 @@ public class GitHubApiClient {
             return commits;
 
         } catch (org.springframework.web.client.HttpClientErrorException ex) {
+            // 409 Conflict → empty repository (no commits yet) → return empty
+            if (ex.getStatusCode().value() == 409) {
+                log.info("Repository {}/{} is empty (409 Conflict), returning empty commits", owner, repo);
+                return Collections.emptyList();
+            }
             // 401 Unauthorized hoặc 404 Not Found → ném lỗi rõ ràng
             String msg = switch (ex.getStatusCode().value()) {
                 case 401 -> "GitHub token không hợp lệ hoặc đã hết hạn";
                 case 403 -> "GitHub token không có quyền truy cập repo này";
                 case 404 ->
                     "Không tìm thấy repo hoặc branch '" + branch + "' không tồn tại trong " + owner + "/" + repo;
-                default -> "GitHub API lỗi: " + ex.getMessage();
+                default -> "GitHub API lỗi: " + ex.getStatusCode().value() + " " + ex.getStatusText();
             };
             log.error(">>> GitHub API ERROR [{}]: {}", ex.getStatusCode(), msg);
             throw new com.trackspace.common.BadRequestException(msg);

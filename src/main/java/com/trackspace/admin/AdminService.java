@@ -86,6 +86,36 @@ public class AdminService {
         userRepository.delete(user);
     }
 
+    /**
+     * Update user information
+     *
+     * @param userId  User ID to update
+     * @param request Update request
+     * @return Updated user response
+     */
+    @Transactional
+    public UserResponse updateUser(Long userId, UpdateUserRequest request) {
+        User user = findUserById(userId);
+
+        // Check email uniqueness (excluding current user)
+        if (!user.getEmail().equals(request.getEmail())) {
+            validateEmailNotExists(request.getEmail());
+        }
+
+        user.setFullName(request.getFullName());
+        user.setEmail(request.getEmail());
+        user.setRole(request.getRole());
+        user.setStudentCode(request.getStudentCode());
+
+        // Only update password if provided
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+
+        User updatedUser = userRepository.save(user);
+        return buildUserResponse(updatedUser);
+    }
+
     // ==================== Helper Methods ====================
 
     /**
@@ -151,6 +181,7 @@ public class AdminService {
                 .email(user.getEmail())
                 .fullName(user.getFullName())
                 .role(user.getRole())
+                .studentCode(user.getStudentCode())
                 .active(user.getActive())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
