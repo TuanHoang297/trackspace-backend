@@ -98,17 +98,18 @@ public class CommitServiceImpl implements CommitService {
                     // Fallback to default branch
                     branchesToSync.add(connection.getBranchName());
                 } else {
-                    // IMPORTANT: Sync default branch FIRST so shared commits get correct branchName
+                    // Sync feature branches FIRST so commits get their original branch name,
+                    // then default branch LAST (only picks up commits unique to main)
                     String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
-                    branchesToSync.add(defaultBranch);
                     for (GitHubApiClient.GitHubBranchDto b : allBranches) {
                         if (!b.getName().equals(defaultBranch)) {
                             branchesToSync.add(b.getName());
                         }
                     }
+                    branchesToSync.add(defaultBranch); // main goes LAST
                 }
-                log.info("Syncing {} branches for repo {}/{} (default: {})",
-                        branchesToSync.size(), owner, repo, branchesToSync.get(0));
+                log.info("Syncing {} branches for repo {}/{} (default last: {})",
+                        branchesToSync.size(), owner, repo, branchesToSync.get(branchesToSync.size() - 1));
             }
 
             // Fetch and save commits for each branch
@@ -382,6 +383,79 @@ public class CommitServiceImpl implements CommitService {
 
         // Sort by lines added desc (code contribution)
         result.sort((a, b) -> Long.compare(b.getTotalLinesAdded(), a.getTotalLinesAdded()));
+        return result;
+    }
+
+    /**
+     * Fetch commits for a specific branch directly from GitHub API (real-time).
+     * Enriches with DB stats if the commit SHA exists in our database.
+     */
+    @Override
+    public List<CommitResponse> getCommitsByBranch(Integer projectId, Integer connectionId, String branch) {
+        log.info("Fetching commits for branch '{}' from GitHub API (connection {})", branch, connectionId);
+
+        Connection connection = connectionRepository.findById(connectionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Connection not found: " + connectionId));
+
+        // Parse owner/repo
+        String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
+        String owner = ownerRepo[0];
+        String repo = ownerRepo[1];
+
+        // Fetch commits for this branch from GitHub API (last 365 days)
+        Instant since = Instant.now().minus(Duration.ofDays(365));
+        List<GitHubCommitDto> githubCommits = gitHubApiClient
+                .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
+
+        if (githubCommits == null || githubCommits.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Pre-load all DB commits by SHA for fast enrichment (stats lookup)
+        Map<String, Commit> dbCommitsBySha = commitRepository
+                .findByConnectionIdOrderByCommitDateDesc(connectionId)
+                .stream()
+                .collect(Collectors.toMap(Commit::getCommitSha, c -> c, (a, b) -> a));
+
+        // Map GitHub API commits to CommitResponse, enriching with DB stats
+        List<CommitResponse> result = new ArrayList<>();
+        for (GitHubCommitDto ghCommit : githubCommits) {
+            Commit dbCommit = dbCommitsBySha.get(ghCommit.getSha());
+
+            CommitResponse.CommitResponseBuilder builder = CommitResponse.builder()
+                    .commitSha(ghCommit.getSha())
+                    .commitMessage(ghCommit.getCommit().getMessage())
+                    .authorName(ghCommit.getCommit().getAuthor().getName())
+                    .authorEmail(ghCommit.getCommit().getAuthor().getEmail())
+                    .commitDate(Instant.parse(ghCommit.getCommit().getAuthor().getDate()))
+                    .branchName(branch);
+
+            // GitHub login
+            if (ghCommit.getAuthor() != null && ghCommit.getAuthor().getLogin() != null) {
+                builder.githubLogin(ghCommit.getAuthor().getLogin());
+            } else if (ghCommit.getCommitter() != null && ghCommit.getCommitter().getLogin() != null) {
+                builder.githubLogin(ghCommit.getCommitter().getLogin());
+            }
+
+            // Enrich with DB stats if available
+            if (dbCommit != null) {
+                builder.commitId(dbCommit.getId())
+                        .filesChanged(dbCommit.getFilesChanged())
+                        .linesAdded(dbCommit.getLinesAdded())
+                        .linesDeleted(dbCommit.getLinesDeleted())
+                        .authorId(dbCommit.getAuthorId())
+                        .linkedIssueId(dbCommit.getLinkedIssueId());
+            } else {
+                builder.commitId(null)
+                        .filesChanged(0)
+                        .linesAdded(0)
+                        .linesDeleted(0);
+            }
+
+            result.add(builder.build());
+        }
+
+        log.info("Fetched {} commits for branch '{}' from GitHub API", result.size(), branch);
         return result;
     }
 

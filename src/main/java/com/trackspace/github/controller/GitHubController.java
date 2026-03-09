@@ -274,6 +274,22 @@ public class GitHubController {
   }
 
   /**
+   * GET /api/v1/github/commits/{projectId}/by-branch
+   * Get commits for a specific branch directly from GitHub API (real-time).
+   * Unlike the regular /commits endpoint which filters by DB branch_name,
+   * this fetches directly from GitHub to show all commits on any branch.
+   */
+  @Operation(summary = "Get commits by branch (real-time from GitHub)")
+  @GetMapping("/commits/{projectId}/by-branch")
+  public ResponseEntity<ApiResponse<List<CommitResponse>>> getCommitsByBranch(
+      @PathVariable Integer projectId,
+      @RequestParam Integer connectionId,
+      @RequestParam String branch) {
+    List<CommitResponse> commits = commitService.getCommitsByBranch(projectId, connectionId, branch);
+    return ResponseEntity.ok(ApiResponse.success(commits));
+  }
+
+  /**
    * GET /api/v1/github/stats/{projectId}
    * Get contribution statistics for a project
    */
