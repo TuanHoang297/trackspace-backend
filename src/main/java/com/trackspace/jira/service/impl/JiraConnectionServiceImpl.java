@@ -16,8 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-
 /**
  * Implementation of JiraConnectionService
  * Handles Jira project connection management
@@ -37,19 +35,35 @@ public class JiraConnectionServiceImpl implements JiraConnectionService {
     public JiraConnectionResponse connect(JiraConnectionRequest request) {
         log.info("Connecting Jira for project {}", request.getProjectId());
 
-        // Check if connection already exists
-        if (connectionRepository.existsByProjectId(request.getProjectId())) {
-            throw new BadRequestException("Jira connection already exists for this project");
-        }
+        // Check if connection already exists for this project
+        connectionRepository.findByProjectId(request.getProjectId()).ifPresent(existing -> {
+            if (existing.getConnectionStatus() == JiraConnectionStatus.CONNECTED) {
+                throw new BadRequestException(
+                        "Dự án này đã được kết nối Jira. Hãy ngắt kết nối trước khi kết nối lại.");
+            }
+            // Clean up old DISCONNECTED/ERROR record
+            issueRepository.deleteAll(issueRepository.findByProjectId(request.getProjectId()));
+            sprintRepository.deleteAll(sprintRepository.findByProjectIdOrderByStartDateDesc(request.getProjectId()));
+            connectionRepository.delete(existing);
+            log.info("Cleaned up old {} connection for project {}", existing.getConnectionStatus(), request.getProjectId());
+        });
 
-        // Validate connection with Jira API
-        boolean isValid = jiraApiClient.validateConnection(
+        // Check if another project already uses this Jira project key
+        connectionRepository.findByProjectKey(request.getProjectKey()).ifPresent(existing -> {
+            if (existing.getConnectionStatus() == JiraConnectionStatus.CONNECTED) {
+                throw new BadRequestException(
+                        "Jira project key '" + request.getProjectKey()
+                                + "' đã được kết nối với dự án khác (projectId="
+                                + existing.getProjectId() + "). Mỗi Jira project chỉ kết nối được 1 dự án.");
+            }
+            // Clean up stale record from another project
+            connectionRepository.delete(existing);
+        });
+
+        // Validate connection with Jira API (throws BadRequestException on failure)
+        jiraApiClient.validateConnection(
                 request.getSiteUrl(), request.getEmail(),
                 request.getApiToken(), request.getProjectKey());
-
-        if (!isValid) {
-            throw new BadRequestException("Invalid Jira credentials or no access to project");
-        }
 
         // Create connection entity
         JiraConnection connection = new JiraConnection();
@@ -88,12 +102,17 @@ public class JiraConnectionServiceImpl implements JiraConnectionService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Jira connection not found for project: " + projectId));
 
-        connection.setConnectionStatus(JiraConnectionStatus.DISCONNECTED);
-        connection.setApiTokenEncrypted(""); // Clear token
-        connection.setUpdatedAt(Instant.now());
+        // Delete all related data first (issues → sprints → connection)
+        long deletedIssues = issueRepository.countByProjectId(projectId);
+        issueRepository.deleteAll(issueRepository.findByProjectId(projectId));
 
-        connectionRepository.save(connection);
-        log.info("Successfully disconnected Jira for project {}", projectId);
+        long deletedSprints = sprintRepository.countByProjectId(projectId);
+        sprintRepository.deleteAll(sprintRepository.findByProjectIdOrderByStartDateDesc(projectId));
+
+        connectionRepository.delete(connection);
+
+        log.info("Disconnected Jira for project {} — removed {} issues, {} sprints",
+                projectId, deletedIssues, deletedSprints);
     }
 
     @Override

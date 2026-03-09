@@ -113,14 +113,33 @@ public class ConnectionServiceImpl implements ConnectionService {
             throw new ResourceNotFoundException("GitHub connection not found for project: " + projectId);
         }
 
+        // Delete all related commits first, then connections
+        long deletedCommits = 0;
         for (Connection connection : connections) {
-            connection.setStatus(ConnectionStatus.DISCONNECTED);
-            connection.setAccessTokenEncrypted(""); // Clear token on disconnect
-            connection.setUpdatedAt(Instant.now());
-            connectionRepository.save(connection);
+            long count = commitRepository.countByConnectionId(connection.getId());
+            commitRepository.deleteByConnectionId(connection.getId());
+            deletedCommits += count;
         }
+        connectionRepository.deleteAll(connections);
 
-        log.info("Successfully disconnected {} GitHub repositories for project {}", connections.size(), projectId);
+        log.info("Disconnected {} GitHub repositories for project {} — removed {} commits",
+                connections.size(), projectId, deletedCommits);
+    }
+
+    @Override
+    @Transactional
+    public void disconnectSingleRepository(Integer connectionId) {
+        log.info("Disconnecting single GitHub connection {}", connectionId);
+
+        Connection connection = connectionRepository.findById(connectionId)
+                .orElseThrow(() -> new ResourceNotFoundException("GitHub connection not found: " + connectionId));
+
+        long count = commitRepository.countByConnectionId(connectionId);
+        commitRepository.deleteByConnectionId(connectionId);
+        connectionRepository.delete(connection);
+
+        log.info("Disconnected GitHub connection {} (repo: {}) — removed {} commits",
+                connectionId, connection.getRepositoryUrl(), count);
     }
 
     @Override
