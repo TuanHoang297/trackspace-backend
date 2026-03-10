@@ -37,4 +37,7 @@ public class CreateUserRequest {
     @NotNull(message = "Role không được để trống")
     @Schema(description = "User role (LECTURER, TEAMLEADER, TEAMMEMBER)", example = "LECTURER")
     private User.Role role;
+
+    @Schema(description = "Student code (for student accounts)", example = "SE123456")
+    private String studentCode;
 }

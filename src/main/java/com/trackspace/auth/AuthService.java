@@ -115,6 +115,16 @@ public class AuthService {
     }
 
     /**
+     * Update GitHub login for current user
+     */
+    @Transactional
+    public void updateGithubLogin(String githubLogin) {
+        User user = getCurrentUser();
+        user.setGithubLogin(githubLogin != null ? githubLogin.trim() : null);
+        userRepository.save(user);
+    }
+
+    /**
      * Change password for current user
      */
     @Transactional

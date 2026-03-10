@@ -245,13 +245,15 @@ public class JiraController {
         public ResponseEntity<ApiResponse<JiraIssueResponse>> assignIssue(
                         @Parameter(description = "Issue ID", required = true, example = "1") @PathVariable Integer issueId,
 
-                        @RequestBody Map<String, String> body) {
+                        @RequestBody Map<String, Object> body) {
 
-                String jiraAccountId = body.get("jiraAccountId");
-                String displayName = body.get("displayName");
-                log.info("PUT /api/v1/jira/issues/{}/assign - jiraAccountId={}, displayName={}", issueId, jiraAccountId,
-                                displayName);
-                JiraIssueResponse response = issueService.assignIssueOnJira(issueId, jiraAccountId, displayName);
+                String jiraAccountId = (String) body.get("jiraAccountId");
+                String displayName = (String) body.get("displayName");
+                Integer userId = body.get("userId") != null
+                        ? Integer.parseInt(body.get("userId").toString()) : null;
+                log.info("PUT /api/v1/jira/issues/{}/assign - jiraAccountId={}, displayName={}, userId={}",
+                        issueId, jiraAccountId, displayName, userId);
+                JiraIssueResponse response = issueService.assignIssueOnJira(issueId, jiraAccountId, displayName, userId);
                 return ResponseEntity.ok(ApiResponse.success("Issue assigned successfully", response));
         }
 

@@ -61,11 +61,23 @@ public class AuthController {
                 user.getEmail(),
                 user.getFullName(),
                 user.getRole(),
-                user.getActive()
+                user.getActive(),
+                user.getGithubLogin()
         );
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy thông tin người dùng thành công", userInfo)
         );
+    }
+
+    /**
+     * Update GitHub login endpoint
+     * PUT /api/auth/github-login
+     */
+    @PutMapping("/github-login")
+    @Operation(summary = "Set GitHub username", description = "Link GitHub username to current user for commit attribution")
+    public ResponseEntity<ApiResponse<Void>> updateGithubLogin(@RequestBody java.util.Map<String, String> body) {
+        authService.updateGithubLogin(body.get("githubLogin"));
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật GitHub username thành công", null));
     }
 
     /**
@@ -87,6 +99,7 @@ public class AuthController {
             String email,
             String fullName,
             User.Role role,
-            Boolean active
+            Boolean active,
+            String githubLogin
     ) {}
 }

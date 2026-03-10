@@ -11,6 +11,7 @@ import com.trackspace.github.repository.ConnectionRepository;
 import com.trackspace.github.service.CommitService;
 import com.trackspace.github.service.GitHubApiClient;
 import com.trackspace.github.service.GitHubApiClient.GitHubCommitDto;
+import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,9 +36,7 @@ public class CommitServiceImpl implements CommitService {
     private final CommitRepository commitRepository;
     private final ConnectionRepository connectionRepository;
     private final GitHubApiClient gitHubApiClient;
-
-    // TODO: Inject UserRepository when available
-    // private final UserRepository userRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -159,9 +158,13 @@ public class CommitServiceImpl implements CommitService {
         log.info("Commit sync completed for project {}: {} synced, {} skipped",
                 request.getProjectId(), totalSynced, totalSkipped);
 
+        // Backfill authorId for any existing commits that still have null authorId
+        int backfilled = backfillAuthorIds(request.getProjectId());
+
         return Map.of(
                 "commitsSynced", totalSynced,
                 "commitsSkipped", totalSkipped,
+                "authorIdBackfilled", backfilled,
                 "lastSyncAt", Instant.now(),
                 "message",
                 String.format("Successfully synced %d commits from %d repos", totalSynced, connections.size()));
@@ -590,16 +593,52 @@ public class CommitServiceImpl implements CommitService {
     }
 
     /**
-     * Find user ID by email
-     * TODO: Implement actual user lookup when UserRepository is available
+     * Backfill authorId for commits in a project that currently have authorId = null.
+     * This patches historical data synced before the email→userId mapping was implemented.
+     */
+    private int backfillAuthorIds(Integer projectId) {
+        List<Commit> unmatched = commitRepository.findByProjectIdAndAuthorIdIsNull(projectId);
+        int patched = 0;
+        for (Commit commit : unmatched) {
+            Integer userId = findUserIdByEmail(commit.getAuthorEmail());
+            if (userId != null) {
+                commit.setAuthorId(userId);
+                commitRepository.save(commit);
+                patched++;
+            }
+        }
+        if (patched > 0) {
+            log.info("Backfilled authorId for {} / {} commits in project {}", patched, unmatched.size(), projectId);
+        }
+        return patched;
+    }
+
+    /**
+     * Map commit author email (or noreply GitHub email) to local user ID.
+     * Strategy:
+     *   1. Direct email match against User.email
+     *   2. Extract GitHub login from noreply format and match against User.githubLogin
      */
     private Integer findUserIdByEmail(String email) {
-        // TODO: Implement actual lookup
-        // Optional<User> user = userRepository.findByEmail(email);
-        // return user.map(User::getId).orElse(null);
+        if (email == null || email.isBlank()) return null;
 
-        log.debug("User mapping not implemented yet for email: {}", email);
-        return null; // Will be null until user mapping is implemented
+        // 1. Direct email match
+        Optional<Integer> byEmail = userRepository.findByEmail(email)
+                .map(u -> u.getId().intValue());
+        if (byEmail.isPresent()) return byEmail.get();
+
+        // 2. GitHub noreply format: "12345+username@users.noreply.github.com"
+        if (email.endsWith("@users.noreply.github.com")) {
+            String local = email.replace("@users.noreply.github.com", "");
+            // Strip numeric prefix (e.g. "12345+username" → "username")
+            int plusIdx = local.indexOf('+');
+            String login = plusIdx >= 0 ? local.substring(plusIdx + 1) : local;
+            return userRepository.findByGithubLogin(login)
+                    .map(u -> u.getId().intValue())
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     /**
