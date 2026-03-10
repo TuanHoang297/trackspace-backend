@@ -71,9 +71,7 @@ public class SrsServiceImpl implements SrsService {
                 String promptText = aiPromptBuilder.buildPrompt(
                                 info, issues, groupName, creator.getFullName(), nextVersion);
 
-                String pdfBase64 = aiPromptBuilder.loadPdfTemplateAsBase64();
-
-                String htmlContent = callGeminiApi(promptText, pdfBase64);
+                String markdownContent = callGeminiApi(promptText, null);
 
                 String title = "SRS - " + info.getProject().getProjectName() + " v" + nextVersion;
 
@@ -82,8 +80,7 @@ public class SrsServiceImpl implements SrsService {
                                 .project(info.getProject())
                                 .versionNumber(nextVersion)
                                 .title(title)
-                                .content(htmlContent)
-                                .generatedByAi(true)
+                                .content(markdownContent)
                                 .createdBy(creator)
                                 .build();
 
@@ -141,7 +138,6 @@ public class SrsServiceImpl implements SrsService {
                                 .versionNumber(nextVersion)
                                 .title(newTitle)
                                 .content(request.getContent())
-                                .generatedByAi(false)
                                 .createdBy(editor)
                                 .build();
 
@@ -178,33 +174,43 @@ public class SrsServiceImpl implements SrsService {
                                 + geminiModel + ":generateContent?key=" + geminiApiKey;
 
                 List<Map<String, Object>> parts = new ArrayList<>();
-
-                if (pdfBase64 != null) {
-                        parts.add(Map.of("inlineData", Map.of(
-                                        "mimeType", "application/pdf",
-                                        "data", pdfBase64)));
-                }
-
                 parts.add(Map.of("text", Objects.requireNonNull(promptText, "promptText cannot be null")));
 
+                Map<String, Object> generationConfig = Map.of(
+                                "maxOutputTokens", 8192,
+                                "temperature", 0.7);
+
                 Map<String, Object> requestBody = Map.of(
-                                "contents", List.of(Map.of("parts", parts)));
+                                "contents", List.of(Map.of("parts", parts)),
+                                "generationConfig", generationConfig);
 
-                log.info("Calling Gemini API (model={}, withPdf={})", geminiModel, pdfBase64 != null);
+                log.info("Calling Gemini API (model={})", geminiModel);
 
-                Map<?, ?> response = webClient.post()
-                                .uri(url)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(requestBody)
-                                .retrieve()
-                                .bodyToMono(Map.class)
-                                .block();
+                try {
+                        Map<?, ?> response = webClient.post()
+                                        .uri(url)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .bodyValue(requestBody)
+                                        .retrieve()
+                                        .bodyToMono(Map.class)
+                                        .block();
 
-                if (response == null) {
-                        throw new RuntimeException("Gemini API call returned null response");
+                        if (response == null) {
+                                throw new RuntimeException("Gemini API call returned null response");
+                        }
+
+                        return parseGeminiResponse(response);
+
+                } catch (org.springframework.web.reactive.function.client.WebClientResponseException.TooManyRequests e) {
+                        log.error("Gemini API Rate Limit Exceeded (429)", e);
+                        throw new RuntimeException("Hệ thống AI đang quá tải (vượt quá giới hạn miễn phí). Vui lòng đợi 1 phút rồi thử lại.");
+                } catch (org.springframework.web.reactive.function.client.WebClientResponseException.NotFound e) {
+                        log.error("Gemini API Model Not Found (404)", e);
+                        throw new RuntimeException("Không tìm thấy model AI: " + geminiModel + ". Vui lòng kiểm tra lại cấu hình tên model.");
+                } catch (Exception e) {
+                        log.error("Gemini API Error", e);
+                        throw new RuntimeException("Lỗi kết nối AI: " + e.getMessage());
                 }
-
-                return parseGeminiResponse(response);
         }
 
         private String parseGeminiResponse(Map<?, ?> response) {
@@ -230,7 +236,6 @@ public class SrsServiceImpl implements SrsService {
                                 .versionNumber(doc.getVersionNumber())
                                 .title(doc.getTitle())
                                 .content(doc.getContent())
-                                .generatedByAi(doc.getGeneratedByAi())
                                 .projectId(doc.getProject().getId())
                                 .createdByName(doc.getCreatedBy().getFullName())
                                 .updatedAt(doc.getUpdatedAt())

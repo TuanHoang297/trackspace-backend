@@ -34,7 +34,7 @@ public class SrsController {
     private final AuthService authService;
 
     @PostMapping("/api/projects/{projectId}/srs/generate")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER')")
+    @PreAuthorize("hasAnyRole('TEAMLEADER','TEAMMEMBER')")
     @Operation(summary = "Generate SRS using AI", description = "Generates a new SRS document version from project info and Jira issues.")
     public ResponseEntity<ApiResponse<SrsDocumentResponse>> generateSrs(@PathVariable Long projectId) {
         User currentUser = authService.getCurrentUser();
