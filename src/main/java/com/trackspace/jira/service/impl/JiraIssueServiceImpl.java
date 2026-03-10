@@ -15,6 +15,7 @@ import com.trackspace.jira.repository.JiraIssueRepository;
 import com.trackspace.jira.service.JiraApiClient;
 import com.trackspace.jira.service.JiraApiClient.JiraIssueDto;
 import com.trackspace.jira.service.JiraIssueService;
+import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,7 @@ public class JiraIssueServiceImpl implements JiraIssueService {
     private final JiraConnectionRepository connectionRepository;
     private final JiraSprintRepository sprintRepository;
     private final JiraApiClient jiraApiClient;
+    private final UserRepository userRepository;
 
     @Override
     public List<JiraIssueResponse> getIssues(Integer projectId, Integer sprintId,
@@ -234,8 +236,8 @@ public class JiraIssueServiceImpl implements JiraIssueService {
      * Assign issue on Jira using jiraAccountId, then update local
      */
     @Transactional
-    public JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName) {
-        log.info("Assigning issue {} to Jira accountId {} ({})", issueId, jiraAccountId, displayName);
+    public JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName, Integer userId) {
+        log.info("Assigning issue {} to Jira accountId {} ({}) userId={}", issueId, jiraAccountId, displayName, userId);
 
         JiraIssue issue = issueRepository.findById(issueId)
                 .orElseThrow(() -> new ResourceNotFoundException("Issue not found: " + issueId));
@@ -249,12 +251,23 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 conn.getSiteUrl(), conn.getEmail(), conn.getApiTokenEncrypted(),
                 issue.getIssueKey(), jiraAccountId);
 
-        // Update local
+        // Update local identifiers
         issue.setJiraAccountId(jiraAccountId);
         issue.setAssigneeName(displayName);
-        JiraIssue saved = issueRepository.save(issue);
 
-        log.info("Successfully assigned issue {} to {} on Jira", issue.getIssueKey(), displayName);
+        // Resolve TrackSpace assigneeId:
+        // 1. Use userId from request if provided
+        // 2. Fallback: match displayName against User.fullName
+        if (userId != null) {
+            issue.setAssigneeId(userId);
+        } else if (displayName != null && !displayName.isBlank()) {
+            userRepository.findFirstByFullNameIgnoreCase(displayName)
+                    .ifPresent(u -> issue.setAssigneeId(u.getId().intValue()));
+        }
+
+        JiraIssue saved = issueRepository.save(issue);
+        log.info("Successfully assigned issue {} to {} (assigneeId={}) on Jira",
+                issue.getIssueKey(), displayName, saved.getAssigneeId());
         return mapToResponse(saved);
     }
 
@@ -325,9 +338,25 @@ public class JiraIssueServiceImpl implements JiraIssueService {
 
             // Map assignee displayName and accountId from Jira
             if (dto.getFields().getAssignee() != null) {
-                issue.setAssigneeName(dto.getFields().getAssignee().getDisplayName());
+                String displayName = dto.getFields().getAssignee().getDisplayName();
+                issue.setAssigneeName(displayName);
                 issue.setJiraAccountId(dto.getFields().getAssignee().getAccountId());
-                issue.setAssigneeEmail(dto.getFields().getAssignee().getEmailAddress());
+                String assigneeEmail = dto.getFields().getAssignee().getEmailAddress();
+                issue.setAssigneeEmail(assigneeEmail);
+                // Strategy 1: Email match
+                boolean matched = false;
+                if (assigneeEmail != null && !assigneeEmail.isBlank()) {
+                    var byEmail = userRepository.findByEmail(assigneeEmail);
+                    if (byEmail.isPresent()) {
+                        issue.setAssigneeId(byEmail.get().getId().intValue());
+                        matched = true;
+                    }
+                }
+                // Strategy 2: Full name match (fallback when Jira email is hidden)
+                if (!matched && displayName != null && !displayName.isBlank()) {
+                    userRepository.findFirstByFullNameIgnoreCase(displayName)
+                            .ifPresent(u -> issue.setAssigneeId(u.getId().intValue()));
+                }
             } else {
                 issue.setAssigneeName(null);
                 issue.setJiraAccountId(null);

@@ -39,8 +39,9 @@ public interface JiraIssueService {
 
     /**
      * Assign issue to a Jira user using their accountId (syncs to Jira)
+     * userId is the optional TrackSpace local user ID for direct assigneeId mapping
      */
-    JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName);
+    JiraIssueResponse assignIssueOnJira(Integer issueId, String jiraAccountId, String displayName, Integer userId);
 
     /**
      * Get assignable users from Jira project

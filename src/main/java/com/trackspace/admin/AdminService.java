@@ -125,6 +125,9 @@ public class AdminService {
         user.setFullName(request.getFullName());
         user.setRole(request.getRole());
         user.setActive(true);
+        if (request.getStudentCode() != null && !request.getStudentCode().isBlank()) {
+            user.setStudentCode(request.getStudentCode().trim());
+        }
         return user;
     }
 
