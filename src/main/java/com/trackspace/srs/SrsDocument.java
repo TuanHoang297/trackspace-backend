@@ -46,9 +46,6 @@ public class SrsDocument {
     @Column(name = "content", nullable = false)
     private String content;
 
-    @ColumnDefault("0")
-    @Column(name = "generated_by_ai")
-    private Boolean generatedByAi;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

@@ -16,7 +16,6 @@ public class SrsDocumentResponse {
     private Integer versionNumber;
     private String title;
     private String content;
-    private Boolean generatedByAi;
     private Long projectId;
     private String createdByName;
     private LocalDateTime updatedAt;
