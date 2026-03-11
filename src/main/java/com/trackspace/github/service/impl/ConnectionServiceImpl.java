@@ -156,6 +156,13 @@ public class ConnectionServiceImpl implements ConnectionService {
     }
 
     @Override
+    public Connection getConnectionById(Integer connectionId) {
+        return connectionRepository.findById(connectionId)
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("GitHub connection not found: " + connectionId));
+    }
+
+    @Override
     public List<ConnectionStatusResponse> getConnections(Integer projectId) {
         List<Connection> connections = connectionRepository.findByProjectId(projectId);
         return connections.stream()

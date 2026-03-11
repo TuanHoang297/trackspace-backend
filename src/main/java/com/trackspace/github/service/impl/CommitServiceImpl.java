@@ -11,6 +11,7 @@ import com.trackspace.github.repository.ConnectionRepository;
 import com.trackspace.github.service.CommitService;
 import com.trackspace.github.service.GitHubApiClient;
 import com.trackspace.github.service.GitHubApiClient.GitHubCommitDto;
+import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,9 +36,7 @@ public class CommitServiceImpl implements CommitService {
     private final CommitRepository commitRepository;
     private final ConnectionRepository connectionRepository;
     private final GitHubApiClient gitHubApiClient;
-
-    // TODO: Inject UserRepository when available
-    // private final UserRepository userRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -86,82 +85,86 @@ public class CommitServiceImpl implements CommitService {
                 }
             }
 
-            // Determine branches to sync (all branches if not specified)
+            // Only sync DEFAULT branch for speed — other branches use real-time API (getCommitsByBranch)
             List<String> branchesToSync = new java.util.ArrayList<>();
             if (request.getBranch() != null) {
                 branchesToSync.add(request.getBranch());
             } else {
-                // Fetch ALL branches from GitHub
-                List<GitHubApiClient.GitHubBranchDto> allBranches = gitHubApiClient
-                        .fetchBranches(owner, repo, connection.getAccessTokenEncrypted());
-                if (allBranches.isEmpty()) {
-                    // Fallback to default branch
-                    branchesToSync.add(connection.getBranchName());
-                } else {
-                    // IMPORTANT: Sync default branch FIRST so shared commits get correct branchName
-                    String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
-                    branchesToSync.add(defaultBranch);
-                    for (GitHubApiClient.GitHubBranchDto b : allBranches) {
-                        if (!b.getName().equals(defaultBranch)) {
-                            branchesToSync.add(b.getName());
-                        }
-                    }
-                }
-                log.info("Syncing {} branches for repo {}/{} (default: {})",
-                        branchesToSync.size(), owner, repo, branchesToSync.get(0));
+                String defaultBranch = connection.getBranchName() != null ? connection.getBranchName() : "main";
+                branchesToSync.add(defaultBranch);
+                log.info("Syncing default branch '{}' for repo {}/{} (other branches via real-time API)",
+                        defaultBranch, owner, repo);
             }
 
-            // Fetch and save commits for each branch
+            // Fetch and save commits INSTANTLY (no detail fetch — stats loaded in background)
+            List<Commit> savedCommits = new java.util.ArrayList<>();
             for (String branch : branchesToSync) {
                 List<GitHubCommitDto> githubCommits = gitHubApiClient
                         .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
 
-                if (githubCommits == null || githubCommits.isEmpty()) {
-                    log.debug("No new commits on branch {} for repo {}/{}", branch, owner, repo);
-                    continue;
-                }
+                if (githubCommits == null || githubCommits.isEmpty()) continue;
 
-                // Process and save only NEW commits
-                for (GitHubCommitDto githubCommit : githubCommits) {
-                    // Skip if already exists (O(1) check — no DB call)
-                    if (existingShas.contains(githubCommit.getSha())) {
-                        totalSkipped++;
-                        continue;
-                    }
-
+                for (GitHubCommitDto ghCommit : githubCommits) {
+                    if (existingShas.contains(ghCommit.getSha())) { totalSkipped++; continue; }
+                    existingShas.add(ghCommit.getSha());
                     try {
-                        // Fetch detailed stats (lines added/deleted, files changed)
-                        // List API does NOT return stats — only detail endpoint does
-                        GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
-                                .fetchCommitDetails(owner, repo, githubCommit.getSha(),
-                                        connection.getAccessTokenEncrypted());
-                        Commit commit = mapToEntity(githubCommit, detail, connection.getProjectId(), connection.getId(),
-                                branch);
-
-                        // Save commit
-                        commitRepository.save(commit);
-                        existingShas.add(githubCommit.getSha()); // Prevent duplicates across branches
+                        Commit commit = mapToEntity(ghCommit, null, connection.getProjectId(), connection.getId(), branch);
+                        savedCommits.add(commitRepository.save(commit));
                         totalSynced++;
                     } catch (Exception e) {
-                        log.warn("Failed to save commit {}: {}", githubCommit.getSha(), e.getMessage());
+                        log.warn("Failed to save commit {}: {}", ghCommit.getSha(), e.getMessage());
                         totalSkipped++;
                     }
                 }
-            } // end branch loop
+            }
 
             // Update lastSyncAt
             connection.setLastSyncAt(Instant.now());
             connectionRepository.save(connection);
+            log.info("Synced repo {}/{}: {} commits (stats loading in background)", owner, repo, totalSynced);
 
-            log.info("Synced repo {}/{}: {} commits", owner, repo, totalSynced);
+            // Background: fetch stats (lines added/deleted/files changed) asynchronously
+            if (!savedCommits.isEmpty()) {
+                String bgOwner = owner, bgRepo = repo;
+                String bgToken = connection.getAccessTokenEncrypted();
+                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    log.info("Background stats fetch started for {} commits (parallel)", savedCommits.size());
+                    // Fetch ALL commit stats in parallel
+                    List<java.util.concurrent.CompletableFuture<Void>> futures = savedCommits.stream()
+                            .map(c -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                                try {
+                                    GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
+                                            .fetchCommitDetails(bgOwner, bgRepo, c.getCommitSha(), bgToken);
+                                    if (detail != null && detail.getStats() != null) {
+                                        c.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
+                                        c.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
+                                        c.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
+                                        commitRepository.save(c);
+                                    }
+                                } catch (Exception e) {
+                                    log.debug("Stats fetch failed for {}: {}", c.getCommitSha(), e.getMessage());
+                                }
+                            }))
+                            .collect(Collectors.toList());
+                    try {
+                        java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                                .get(120, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (Exception e) { log.debug("Some stats fetches timed out"); }
+                    log.info("Background stats fetch completed for {} commits", savedCommits.size());
+                });
+            }
         }
 
         log.info("Commit sync completed for project {}: {} synced, {} skipped",
                 request.getProjectId(), totalSynced, totalSkipped);
 
+        // Backfill authorId for any existing commits that still have null authorId
+        int backfilled = backfillAuthorIds(request.getProjectId());
+
         return Map.of(
                 "commitsSynced", totalSynced,
                 "commitsSkipped", totalSkipped,
+                "authorIdBackfilled", backfilled,
                 "lastSyncAt", Instant.now(),
                 "message",
                 String.format("Successfully synced %d commits from %d repos", totalSynced, connections.size()));
@@ -386,6 +389,79 @@ public class CommitServiceImpl implements CommitService {
     }
 
     /**
+     * Fetch commits for a specific branch directly from GitHub API (real-time).
+     * Enriches with DB stats if the commit SHA exists in our database.
+     */
+    @Override
+    public List<CommitResponse> getCommitsByBranch(Integer projectId, Integer connectionId, String branch) {
+        log.info("Fetching commits for branch '{}' from GitHub API (connection {})", branch, connectionId);
+
+        Connection connection = connectionRepository.findById(connectionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Connection not found: " + connectionId));
+
+        // Parse owner/repo
+        String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
+        String owner = ownerRepo[0];
+        String repo = ownerRepo[1];
+
+        // Fetch commits for this branch from GitHub API (last 365 days)
+        Instant since = Instant.now().minus(Duration.ofDays(365));
+        List<GitHubCommitDto> githubCommits = gitHubApiClient
+                .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
+
+        if (githubCommits == null || githubCommits.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Pre-load all DB commits by SHA for fast enrichment (stats lookup)
+        Map<String, Commit> dbCommitsBySha = commitRepository
+                .findByConnectionIdOrderByCommitDateDesc(connectionId)
+                .stream()
+                .collect(Collectors.toMap(Commit::getCommitSha, c -> c, (a, b) -> a));
+
+        // Map GitHub API commits to CommitResponse, enriching with DB stats
+        List<CommitResponse> result = new ArrayList<>();
+        for (GitHubCommitDto ghCommit : githubCommits) {
+            Commit dbCommit = dbCommitsBySha.get(ghCommit.getSha());
+
+            CommitResponse.CommitResponseBuilder builder = CommitResponse.builder()
+                    .commitSha(ghCommit.getSha())
+                    .commitMessage(ghCommit.getCommit().getMessage())
+                    .authorName(ghCommit.getCommit().getAuthor().getName())
+                    .authorEmail(ghCommit.getCommit().getAuthor().getEmail())
+                    .commitDate(Instant.parse(ghCommit.getCommit().getAuthor().getDate()))
+                    .branchName(branch);
+
+            // GitHub login
+            if (ghCommit.getAuthor() != null && ghCommit.getAuthor().getLogin() != null) {
+                builder.githubLogin(ghCommit.getAuthor().getLogin());
+            } else if (ghCommit.getCommitter() != null && ghCommit.getCommitter().getLogin() != null) {
+                builder.githubLogin(ghCommit.getCommitter().getLogin());
+            }
+
+            // Enrich with DB stats if available
+            if (dbCommit != null) {
+                builder.commitId(dbCommit.getId())
+                        .filesChanged(dbCommit.getFilesChanged())
+                        .linesAdded(dbCommit.getLinesAdded())
+                        .linesDeleted(dbCommit.getLinesDeleted())
+                        .authorId(dbCommit.getAuthorId())
+                        .linkedIssueId(dbCommit.getLinkedIssueId());
+            } else {
+                builder.commitId(null)
+                        .filesChanged(0)
+                        .linesAdded(0)
+                        .linesDeleted(0);
+            }
+
+            result.add(builder.build());
+        }
+
+        log.info("Fetched {} commits for branch '{}' from GitHub API", result.size(), branch);
+        return result;
+    }
+
+    /**
      * Map GitHub commit DTO to Commit entity
      */
     private Commit mapToEntity(GitHubCommitDto githubCommit,
@@ -407,8 +483,11 @@ public class CommitServiceImpl implements CommitService {
         commit.setAuthorEmail(authorEmail);
 
         // GitHub login (from top-level author object, the actual GitHub account)
+        // Fallback: if author is null (email not matching any GitHub account), try committer
         if (githubCommit.getAuthor() != null && githubCommit.getAuthor().getLogin() != null) {
             commit.setGithubLogin(githubCommit.getAuthor().getLogin());
+        } else if (githubCommit.getCommitter() != null && githubCommit.getCommitter().getLogin() != null) {
+            commit.setGithubLogin(githubCommit.getCommitter().getLogin());
         }
 
         // Map author email to user ID
@@ -514,16 +593,52 @@ public class CommitServiceImpl implements CommitService {
     }
 
     /**
-     * Find user ID by email
-     * TODO: Implement actual user lookup when UserRepository is available
+     * Backfill authorId for commits in a project that currently have authorId = null.
+     * This patches historical data synced before the email→userId mapping was implemented.
+     */
+    private int backfillAuthorIds(Integer projectId) {
+        List<Commit> unmatched = commitRepository.findByProjectIdAndAuthorIdIsNull(projectId);
+        int patched = 0;
+        for (Commit commit : unmatched) {
+            Integer userId = findUserIdByEmail(commit.getAuthorEmail());
+            if (userId != null) {
+                commit.setAuthorId(userId);
+                commitRepository.save(commit);
+                patched++;
+            }
+        }
+        if (patched > 0) {
+            log.info("Backfilled authorId for {} / {} commits in project {}", patched, unmatched.size(), projectId);
+        }
+        return patched;
+    }
+
+    /**
+     * Map commit author email (or noreply GitHub email) to local user ID.
+     * Strategy:
+     *   1. Direct email match against User.email
+     *   2. Extract GitHub login from noreply format and match against User.githubLogin
      */
     private Integer findUserIdByEmail(String email) {
-        // TODO: Implement actual lookup
-        // Optional<User> user = userRepository.findByEmail(email);
-        // return user.map(User::getId).orElse(null);
+        if (email == null || email.isBlank()) return null;
 
-        log.debug("User mapping not implemented yet for email: {}", email);
-        return null; // Will be null until user mapping is implemented
+        // 1. Direct email match
+        Optional<Integer> byEmail = userRepository.findByEmail(email)
+                .map(u -> u.getId().intValue());
+        if (byEmail.isPresent()) return byEmail.get();
+
+        // 2. GitHub noreply format: "12345+username@users.noreply.github.com"
+        if (email.endsWith("@users.noreply.github.com")) {
+            String local = email.replace("@users.noreply.github.com", "");
+            // Strip numeric prefix (e.g. "12345+username" → "username")
+            int plusIdx = local.indexOf('+');
+            String login = plusIdx >= 0 ? local.substring(plusIdx + 1) : local;
+            return userRepository.findByGithubLogin(login)
+                    .map(u -> u.getId().intValue())
+                    .orElse(null);
+        }
+
+        return null;
     }
 
     /**

@@ -63,6 +63,8 @@ public interface CommitRepository extends JpaRepository<Commit, Integer> {
         @Query("SELECT gc.commitSha FROM Commit gc WHERE gc.connectionId = :connectionId")
         List<String> findAllShasByConnectionId(@Param("connectionId") Integer connectionId);
 
+        List<Commit> findByProjectIdAndAuthorIdIsNull(Integer projectId);
+
         @Query("SELECT gc FROM Commit gc WHERE gc.connectionId = :connectionId " +
                         "AND gc.branchName = :branch ORDER BY gc.commitDate DESC")
         List<Commit> findByConnectionIdAndBranch(

@@ -25,4 +25,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * @return true if exists
      */
     boolean existsByEmail(String email);
+
+    /**
+     * Find user by GitHub login (username)
+     * @param githubLogin GitHub username
+     * @return Optional User
+     */
+    Optional<User> findByGithubLogin(String githubLogin);
+
+    /**
+     * Find user by full name (case-insensitive) — used as fallback for Jira displayName matching
+     */
+    Optional<User> findFirstByFullNameIgnoreCase(String fullName);
 }

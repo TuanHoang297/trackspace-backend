@@ -56,4 +56,9 @@ public interface ConnectionService {
      * Get ALL connections for a project (multi-repo)
      */
     java.util.List<ConnectionStatusResponse> getConnections(Integer projectId);
+
+    /**
+     * Get a single connection by its ID
+     */
+    com.trackspace.github.entity.Connection getConnectionById(Integer connectionId);
 }

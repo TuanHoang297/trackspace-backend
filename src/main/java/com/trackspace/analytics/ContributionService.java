@@ -110,7 +110,7 @@ public class ContributionService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /** All members' contributions for a project (from cached metrics). */
-    @Transactional(readOnly = true)
+    @Transactional
     public List<ContributionResponse> getByProject(Integer projectId) {
         List<ContributionMetric> metrics =
                 metricRepo.findByProjectIdOrderByContributionScoreDesc(projectId);
@@ -120,7 +120,7 @@ public class ContributionService {
     }
 
     /** Single user's contribution snapshot. Auto-triggers recalculation if missing. */
-    @Transactional(readOnly = true)
+    @Transactional
     public ContributionResponse getByUser(Integer projectId, Long userId) {
         return metricRepo.findByProjectIdAndUserId(projectId, userId)
                 .map(m -> toResponse(m, null))
@@ -135,7 +135,7 @@ public class ContributionService {
     }
 
     /** Full project dashboard with aggregates + per-member chart data. */
-    @Transactional(readOnly = true)
+    @Transactional
     public DashboardResponse getDashboard(Integer projectId) {
         List<ContributionResponse> members = getByProject(projectId);
 
@@ -206,7 +206,7 @@ public class ContributionService {
     }
 
     /** Detect and surface anomalies (inactive, low contribution, overdue, high churn). */
-    @Transactional(readOnly = true)
+    @Transactional
     public IssueDetectionResponse detectIssues(Integer projectId) {
         List<ContributionResponse> members = getByProject(projectId);
         return IssueDetectionResponse.builder()

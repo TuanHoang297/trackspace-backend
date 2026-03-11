@@ -32,6 +32,9 @@ public class UserResponse {
     @Schema(description = "User role")
     private User.Role role;
 
+    @Schema(description = "Student code")
+    private String studentCode;
+
     @Schema(description = "User active status")
     private Boolean active;
 

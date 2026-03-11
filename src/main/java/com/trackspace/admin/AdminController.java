@@ -70,6 +70,20 @@ public class AdminController {
     }
 
     /**
+     * Update user information
+     */
+    @PutMapping("/users/{userId}")
+    @Operation(summary = "Update user", description = "Admin updates user information")
+    public ResponseEntity<ApiResponse<UserResponse>> updateUser(
+            @PathVariable Long userId,
+            @Valid @RequestBody UpdateUserRequest request) {
+        UserResponse response = adminService.updateUser(userId, request);
+        return ResponseEntity.ok(
+                ApiResponse.success("Cập nhật thông tin người dùng thành công", response)
+        );
+    }
+
+    /**
      * Delete user account
      */
     @DeleteMapping("/users/{userId}")

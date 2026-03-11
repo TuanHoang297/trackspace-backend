@@ -10,7 +10,9 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "github_commits")
+@Table(name = "github_commits", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"commit_sha", "connection_id"})
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

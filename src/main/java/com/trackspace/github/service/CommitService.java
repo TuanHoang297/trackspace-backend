@@ -50,4 +50,16 @@ public interface CommitService {
      * @return List of stats responses
      */
     List<StatsResponse> getStats(Integer projectId, Integer connectionId, Integer userId);
+
+    /**
+     * Get commits for a specific branch directly from GitHub API (real-time).
+     * Used when filtering by non-default branches since DB only stores
+     * default branch commits.
+     *
+     * @param projectId    Project ID
+     * @param connectionId Connection ID (required — scopes to a specific repo)
+     * @param branch       Branch name to fetch commits from
+     * @return List of commit responses from GitHub API enriched with DB stats
+     */
+    List<CommitResponse> getCommitsByBranch(Integer projectId, Integer connectionId, String branch);
 }

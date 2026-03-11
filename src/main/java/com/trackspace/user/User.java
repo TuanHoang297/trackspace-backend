@@ -48,6 +48,9 @@ public class User implements UserDetails {
     @Column(name = "is_active", nullable = false)
     private Boolean active = true;
 
+    @Column(name = "github_login", length = 100)
+    private String githubLogin;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
