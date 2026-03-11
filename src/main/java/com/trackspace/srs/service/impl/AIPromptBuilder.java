@@ -113,6 +113,7 @@ public class AIPromptBuilder {
         sb.append("1. Output MUST be a valid JSON object.\n");
         sb.append("2. Language: EXCLUSIVELY ENGLISH.\n");
         sb.append("3. DO NOT wrap the text in a code block (e.g. ```json). Return ONLY the raw JSON.\n");
+        sb.append("4. CRITICAL: Keep your contents concise. You are limited to 8192 tokens. You MUST ensure the JSON is completely closed and valid at the end. If the document is very long, summarize the 'functionalRequirements' and 'systemFunctions' sections to guarantee a perfectly valid and closed JSON structure. DO NOT TRUNCATE THE JSON.\n");
 
         return sb.toString();
     }

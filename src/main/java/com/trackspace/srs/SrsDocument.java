@@ -43,7 +43,7 @@ public class SrsDocument {
 
     @NotNull
     @Lob
-    @Column(name = "content", nullable = false)
+    @Column(name = "content", nullable = false, columnDefinition = "LONGTEXT")
     private String content;
 
 
