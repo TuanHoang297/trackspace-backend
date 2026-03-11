@@ -1,21 +1,22 @@
 package com.trackspace.auth;
 
-import com.trackspace.user.User;
 import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Processes the authenticated Google OAuth2 user.
- * Finds an existing user by email, or auto-creates one with role TEAMMEMBER.
+ * Only allows login if the email already exists in the database.
+ * Auto-registration is intentionally disabled — accounts must be
+ * pre-created by an administrator.
  */
 @Service
 @RequiredArgsConstructor
@@ -33,21 +34,11 @@ public class OAuth2UserService extends DefaultOAuth2UserService {
             throw new OAuth2AuthenticationException("Email not found from OAuth2 provider");
         }
 
-        String name = (String) attributes.get("name");
-        userRepository.findByEmail(email).orElseGet(() -> createUser(email, name));
+        userRepository.findByEmail(email).orElseThrow(() ->
+                new OAuth2AuthenticationException(
+                        new OAuth2Error("access_denied"),
+                        "Tài khoản của bạn không có quyền đăng nhập hệ thống"));
 
         return new DefaultOAuth2User(oAuth2User.getAuthorities(), attributes, "email");
-    }
-
-    private User createUser(String email, String name) {
-        User user = new User();
-        user.setEmail(email);
-        user.setFullName(name != null ? name : email);
-        // OAuth2 users have no password — store an unguessable placeholder so
-        // normal password-based login is impossible for this account.
-        user.setPassword("OAUTH2_" + UUID.randomUUID());
-        user.setRole(User.Role.TEAMMEMBER);
-        user.setActive(true);
-        return userRepository.save(user);
     }
 }
