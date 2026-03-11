@@ -85,7 +85,8 @@ public class CommitServiceImpl implements CommitService {
                 }
             }
 
-            // Only sync DEFAULT branch for speed — other branches use real-time API (getCommitsByBranch)
+            // Only sync DEFAULT branch for speed — other branches use real-time API
+            // (getCommitsByBranch)
             List<String> branchesToSync = new java.util.ArrayList<>();
             if (request.getBranch() != null) {
                 branchesToSync.add(request.getBranch());
@@ -96,19 +97,25 @@ public class CommitServiceImpl implements CommitService {
                         defaultBranch, owner, repo);
             }
 
-            // Fetch and save commits INSTANTLY (no detail fetch — stats loaded in background)
+            // Fetch and save commits INSTANTLY (no detail fetch — stats loaded in
+            // background)
             List<Commit> savedCommits = new java.util.ArrayList<>();
             for (String branch : branchesToSync) {
                 List<GitHubCommitDto> githubCommits = gitHubApiClient
                         .fetchCommits(owner, repo, connection.getAccessTokenEncrypted(), since, branch);
 
-                if (githubCommits == null || githubCommits.isEmpty()) continue;
+                if (githubCommits == null || githubCommits.isEmpty())
+                    continue;
 
                 for (GitHubCommitDto ghCommit : githubCommits) {
-                    if (existingShas.contains(ghCommit.getSha())) { totalSkipped++; continue; }
+                    if (existingShas.contains(ghCommit.getSha())) {
+                        totalSkipped++;
+                        continue;
+                    }
                     existingShas.add(ghCommit.getSha());
                     try {
-                        Commit commit = mapToEntity(ghCommit, null, connection.getProjectId(), connection.getId(), branch);
+                        Commit commit = mapToEntity(ghCommit, null, connection.getProjectId(), connection.getId(),
+                                branch);
                         savedCommits.add(commitRepository.save(commit));
                         totalSynced++;
                     } catch (Exception e) {
@@ -136,8 +143,12 @@ public class CommitServiceImpl implements CommitService {
                                     GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
                                             .fetchCommitDetails(bgOwner, bgRepo, c.getCommitSha(), bgToken);
                                     if (detail != null && detail.getStats() != null) {
-                                        c.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
-                                        c.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
+                                        c.setLinesAdded(detail.getStats().getAdditions() != null
+                                                ? detail.getStats().getAdditions()
+                                                : 0);
+                                        c.setLinesDeleted(detail.getStats().getDeletions() != null
+                                                ? detail.getStats().getDeletions()
+                                                : 0);
                                         c.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
                                         commitRepository.save(c);
                                     }
@@ -147,9 +158,12 @@ public class CommitServiceImpl implements CommitService {
                             }))
                             .collect(Collectors.toList());
                     try {
-                        java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                        java.util.concurrent.CompletableFuture
+                                .allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
                                 .get(120, java.util.concurrent.TimeUnit.SECONDS);
-                    } catch (Exception e) { log.debug("Some stats fetches timed out"); }
+                    } catch (Exception e) {
+                        log.debug("Some stats fetches timed out");
+                    }
                     log.info("Background stats fetch completed for {} commits", savedCommits.size());
                 });
             }
@@ -335,19 +349,24 @@ public class CommitServiceImpl implements CommitService {
 
         // Group by githubLogin (the actual GitHub account — 100% reliable)
         // Use ALL commits to collect names, NON-MERGE for stats
+        // Track original-case login for display
         Map<String, Set<String>> loginToNames = new java.util.LinkedHashMap<>();
+        Map<String, String> loginOriginalCase = new java.util.LinkedHashMap<>();
         for (Commit c : rawCommits) {
-            String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
-                    : (c.getAuthorEmail() != null ? c.getAuthorEmail().toLowerCase() : "unknown");
+            String rawLogin = c.getGithubLogin() != null ? c.getGithubLogin()
+                    : (c.getAuthorEmail() != null ? c.getAuthorEmail() : "unknown");
+            String key = rawLogin.toLowerCase();
             String name = c.getAuthorName() != null ? c.getAuthorName().trim() : "Unknown";
-            loginToNames.computeIfAbsent(login, k -> new java.util.HashSet<>()).add(name);
+            loginToNames.computeIfAbsent(key, k -> new java.util.HashSet<>()).add(name);
+            loginOriginalCase.putIfAbsent(key, rawLogin); // keep first-seen original case
         }
 
         Map<String, List<Commit>> groups = new java.util.LinkedHashMap<>();
         for (Commit c : nonMergeCommits) {
-            String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
-                    : (c.getAuthorEmail() != null ? c.getAuthorEmail().toLowerCase() : "unknown");
-            groups.computeIfAbsent(login, k -> new java.util.ArrayList<>()).add(c);
+            String rawLogin = c.getGithubLogin() != null ? c.getGithubLogin()
+                    : (c.getAuthorEmail() != null ? c.getAuthorEmail() : "unknown");
+            String key = rawLogin.toLowerCase();
+            groups.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(c);
         }
 
         // Build stats per GitHub account
@@ -355,6 +374,7 @@ public class CommitServiceImpl implements CommitService {
         for (Map.Entry<String, List<Commit>> entry : groups.entrySet()) {
             List<Commit> groupCommits = entry.getValue();
             Set<String> names = loginToNames.getOrDefault(entry.getKey(), Set.of());
+            String originalLogin = loginOriginalCase.getOrDefault(entry.getKey(), entry.getKey());
 
             // Prefer full name (contains space) over username
             String displayName = names.stream()
@@ -374,7 +394,7 @@ public class CommitServiceImpl implements CommitService {
             result.add(StatsResponse.builder()
                     .userId(null)
                     .userName(displayName)
-                    .githubLogin(entry.getKey())
+                    .githubLogin(originalLogin) // preserve original case!
                     .totalCommits((long) groupCommits.size())
                     .totalLinesAdded(totalAdded)
                     .totalLinesDeleted(totalDeleted)
@@ -483,7 +503,8 @@ public class CommitServiceImpl implements CommitService {
         commit.setAuthorEmail(authorEmail);
 
         // GitHub login (from top-level author object, the actual GitHub account)
-        // Fallback: if author is null (email not matching any GitHub account), try committer
+        // Fallback: if author is null (email not matching any GitHub account), try
+        // committer
         if (githubCommit.getAuthor() != null && githubCommit.getAuthor().getLogin() != null) {
             commit.setGithubLogin(githubCommit.getAuthor().getLogin());
         } else if (githubCommit.getCommitter() != null && githubCommit.getCommitter().getLogin() != null) {
@@ -593,8 +614,10 @@ public class CommitServiceImpl implements CommitService {
     }
 
     /**
-     * Backfill authorId for commits in a project that currently have authorId = null.
-     * This patches historical data synced before the email→userId mapping was implemented.
+     * Backfill authorId for commits in a project that currently have authorId =
+     * null.
+     * This patches historical data synced before the email→userId mapping was
+     * implemented.
      */
     private int backfillAuthorIds(Integer projectId) {
         List<Commit> unmatched = commitRepository.findByProjectIdAndAuthorIdIsNull(projectId);
@@ -616,16 +639,19 @@ public class CommitServiceImpl implements CommitService {
     /**
      * Map commit author email (or noreply GitHub email) to local user ID.
      * Strategy:
-     *   1. Direct email match against User.email
-     *   2. Extract GitHub login from noreply format and match against User.githubLogin
+     * 1. Direct email match against User.email
+     * 2. Extract GitHub login from noreply format and match against
+     * User.githubLogin
      */
     private Integer findUserIdByEmail(String email) {
-        if (email == null || email.isBlank()) return null;
+        if (email == null || email.isBlank())
+            return null;
 
         // 1. Direct email match
         Optional<Integer> byEmail = userRepository.findByEmail(email)
                 .map(u -> u.getId().intValue());
-        if (byEmail.isPresent()) return byEmail.get();
+        if (byEmail.isPresent())
+            return byEmail.get();
 
         // 2. GitHub noreply format: "12345+username@users.noreply.github.com"
         if (email.endsWith("@users.noreply.github.com")) {
