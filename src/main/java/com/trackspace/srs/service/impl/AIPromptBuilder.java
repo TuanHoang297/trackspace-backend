@@ -15,9 +15,6 @@ import java.util.List;
 @Slf4j
 public class AIPromptBuilder {
 
-    private static final String PDF_TEMPLATE_PATH = "srs/srs_sample.pdf";
-    private static final String MD_TEMPLATE_PATH = "srs/srs_sample.md";
-
     public String buildPrompt(ProjectInfo info,
             List<JiraIssue> issues,
             String groupName,
@@ -29,13 +26,49 @@ public class AIPromptBuilder {
         // --- Role & Task ---
         sb.append("You are an expert Software Requirements Specification (SRS) writer following the IEEE 830 standard.\n");
         sb.append(
-                "Your task is to generate a comprehensive SRS document based on the following project data.\n");
-        sb.append("The document must be written in ENGLISH and formatted in clean Markdown.\n\n");
+                "Your task is to generate a comprehensive SRS document data based on the following project data.\n");
+        sb.append("The output MUST be in valid JSON format only, with no markdown wrappers.\n\n");
 
         // --- Target Structure Instructions ---
-        sb.append("=== REQUIRED DOCUMENT STRUCTURE ===\n");
-        sb.append("The SRS must follow this exact structure:\n");
-        sb.append(loadMarkdownTemplate()).append("\n\n");
+        sb.append("=== REQUIRED JSON STRUCTURE ===\n");
+        sb.append("The JSON MUST strictly follow this typescript interface structure:\n");
+        sb.append("""
+            {
+                "projectName": "string",
+                "locationDate": "string",
+                "introduction": {
+                    "overview": "string",
+                    "context": "string"
+                },
+                "businessMainFlows": {
+                    "description": "string",
+                    "flows": [ { "title": "string", "diagramPlaceholder": "string" } ]
+                },
+                "businessRules": [
+                    { "id": "string", "description": "string" }
+                ],
+                "useCases": {
+                    "description": "string",
+                    "diagramInfo": "string",
+                    "list": [ { "id": "string", "feature": "string", "name": "string", "description": "string" } ]
+                },
+                "systemFunctions": {
+                    "screenFlow": "string",
+                    "screenDetails": [ { "feature": "string", "name": "string", "description": "string" } ],
+                    "roles": [ { "id": "string", "name": "string" } ],
+                    "authorizations": [ { "screenName": "string", "permissions": { "RoleID": true/false } } ]
+                },
+                "highLevelDesign": {
+                    "conceptualERD": "string",
+                    "logicalERD": "string",
+                    "dbSchema": "string",
+                    "tables": [ { "name": "string", "description": "string", "pk": "string", "fk": "string" } ]
+                },
+                "functionalRequirements": [
+                    { "name": "string", "functions": [ { "name": "string", "trigger": "string", "description": "string", "layoutInfo": "string", "details": "string" } ] }
+                ]
+            }
+        """).append("\n\n");
 
         // --- Project Data ---
         sb.append("=== PROJECT DATA ===\n");
@@ -77,37 +110,11 @@ public class AIPromptBuilder {
 
         // --- Output Formatting ---
         sb.append("\n=== OUTPUT CONSTRAINTS ===\n");
-        sb.append("1. Output MUST be valid Markdown text.\n");
-        sb.append("2. Use Markdown tables to format structured data.\n");
-        sb.append(
-                "3. Ensure all tables mentioned in the structure are included even if they contain sample data based on your reasoning.\n");
-        sb.append("4. Language: EXCLUSIVELY ENGLISH.\n");
-        sb.append("5. DO NOT wrap the text in a code block (no ```markdown). Return only the raw markdown.\n");
-        sb.append(
-                "6. For any diagrams (Context, Swimlane, Screen Flow, ERD, Use Case), include a placeholder formatted as: [Insert Image: <Description of Diagram Content>].\n");
+        sb.append("1. Output MUST be a valid JSON object.\n");
+        sb.append("2. Language: EXCLUSIVELY ENGLISH.\n");
+        sb.append("3. DO NOT wrap the text in a code block (e.g. ```json). Return ONLY the raw JSON.\n");
 
         return sb.toString();
-    }
-
-    public String loadPdfTemplateAsBase64() {
-        try {
-            ClassPathResource resource = new ClassPathResource(PDF_TEMPLATE_PATH);
-            byte[] bytes = resource.getInputStream().readAllBytes();
-            return Base64.getEncoder().encodeToString(bytes);
-        } catch (IOException e) {
-            log.warn("SRS sample PDF not found at '{}'. Generating without template reference.", PDF_TEMPLATE_PATH);
-            return null;
-        }
-    }
-
-    public String loadMarkdownTemplate() {
-        try {
-            ClassPathResource resource = new ClassPathResource(MD_TEMPLATE_PATH);
-            return new String(resource.getInputStream().readAllBytes());
-        } catch (IOException e) {
-            log.warn("SRS template not found. Using default.");
-            return "";
-        }
     }
 
     private String nullSafe(String value) {

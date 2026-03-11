@@ -178,7 +178,8 @@ public class SrsServiceImpl implements SrsService {
 
                 Map<String, Object> generationConfig = Map.of(
                                 "maxOutputTokens", 8192,
-                                "temperature", 0.7);
+                                "temperature", 0.7,
+                                "responseMimeType", "application/json");
 
                 Map<String, Object> requestBody = Map.of(
                                 "contents", List.of(Map.of("parts", parts)),
