@@ -106,13 +106,10 @@ public class ContributionMetric {
     @Column(name = "code_churn_rate")
     private Double codeChurnRate = 0.0;
 
-    /**
-     * Number of Jira tasks reworked by the user (i.e. Bug issues
-     * linked to tasks originally assigned to them).
-     */
+    /** Number of tasks past their due date and not yet completed. */
     @Builder.Default
-    @Column(name = "rework_count")
-    private Integer reworkCount = 0;
+    @Column(name = "overdue_task_count")
+    private Integer overdueTaskCount = 0;
 
     // ── Domain & Smart Coder ──
 
