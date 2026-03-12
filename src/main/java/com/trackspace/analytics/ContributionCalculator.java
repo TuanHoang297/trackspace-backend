@@ -65,7 +65,11 @@ public class ContributionCalculator {
             Integer projectId, List<User> members,
             double feWeight, double beWeight) {
 
-        List<Commit>    allCommits = commitRepository.findByProjectId(projectId);
+        List<Commit> allCommitsRaw = commitRepository.findByProjectId(projectId);
+        // Exclude merge commits — they should not count as contributions
+        List<Commit>    allCommits = allCommitsRaw.stream()
+                .filter(c -> !MetricsCalculator.isMergeCommit(c.getCommitMessage()))
+                .collect(Collectors.toList());
         List<JiraIssue> allIssues  = jiraIssueRepository.findByProjectId(projectId);
 
         // ── Build connectionId → domain map ────────────────────────────────
@@ -111,13 +115,22 @@ public class ContributionCalculator {
             });
         }
 
-        // ── Normalise Jira scores globally ─────────────────────────────────
-        double maxJira = intermediates.stream()
-                .mapToDouble(ir -> ir.rawJiraScore).max().orElse(1.0);
+        // ── Jira Execution Score (absolute, not relative) ──────────────────
+        // rawJiraScore = (completed/assigned) * jiraQuality * smartCoderBonus
+        // All factors are in [0,1] range (smartCoderBonus max 1.5), so multiply
+        // by 100 and cap at 100 to get an honest 0–100 score per member.
         intermediates.forEach(ir ->
-                ir.jiraExecutionScore = MetricsCalculator.normalizeScore(ir.rawJiraScore, maxJira));
+                ir.jiraExecutionScore = Math.min(100.0, ir.rawJiraScore * 100.0));
 
-        return intermediates.stream().map(this::buildMetric).collect(Collectors.toList());
+        List<ContributionMetric> metrics = intermediates.stream().map(this::buildMetric).collect(Collectors.toList());
+
+        // ── Redistribute contributionScore as proportional share (all members sum to 100%) ──
+        double totalScore = metrics.stream().mapToDouble(ContributionMetric::getContributionScore).sum();
+        if (totalScore > 0) {
+            metrics.forEach(m -> m.setContributionScore(round2(m.getContributionScore() / totalScore * 100.0)));
+        }
+
+        return metrics;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -131,16 +144,18 @@ public class ContributionCalculator {
         double normFE = totalW > 0 ? feWeight / totalW : 0.5;
         double normBE = totalW > 0 ? beWeight / totalW : 0.5;
 
-        double maxFE  = all.stream().mapToDouble(ir -> ir.feRawScore)     .max().orElse(1.0);
-        double maxBE  = all.stream().mapToDouble(ir -> ir.beRawScore)     .max().orElse(1.0);
-        double maxAll = all.stream().mapToDouble(ir -> ir.rawGithubScore) .max().orElse(1.0);
+        // Global max — fallback for UNKNOWN domain only
+        double maxAll = all.stream().mapToDouble(ir -> ir.rawGithubScore).max().orElse(1.0);
+
+        double maxFE = all.stream().mapToDouble(ir -> ir.feRawScore).max().orElse(1.0);
+        double maxBE = all.stream().mapToDouble(ir -> ir.beRawScore).max().orElse(1.0);
 
         for (IntermediateResult ir : all) {
-            double feScore = MetricsCalculator.normalizeScore(ir.feRawScore, maxFE);
-            double beScore = MetricsCalculator.normalizeScore(ir.beRawScore, maxBE);
-
             boolean hasFE = ir.feRawScore > 0;
             boolean hasBE = ir.beRawScore > 0;
+
+            double feScore = MetricsCalculator.normalizeScore(ir.feRawScore, maxFE);
+            double beScore = MetricsCalculator.normalizeScore(ir.beRawScore, maxBE);
 
             if (hasFE && hasBE) {
                 ir.githubImpactScore = feScore * normFE + beScore * normBE;
@@ -152,7 +167,6 @@ public class ContributionCalculator {
                 ir.githubImpactScore = beScore;
                 ir.primaryDomain     = DOMAIN_BACKEND;
             } else {
-                // UNKNOWN-labelled connections — global fallback
                 ir.githubImpactScore = MetricsCalculator.normalizeScore(ir.rawGithubScore, maxAll);
                 ir.primaryDomain     = DOMAIN_UNKNOWN;
             }
@@ -252,22 +266,17 @@ public class ContributionCalculator {
                 && i.getDueDate().isBefore(LocalDate.now(ZoneOffset.UTC))
                 && !"Done".equalsIgnoreCase(i.getStatus()));
 
-        // Rework count: bug-fix commits by others targeting MY issue IDs
-        Set<Integer> myIssueIds = myIssues.stream()
-                .map(JiraIssue::getId).collect(Collectors.toSet());
-        ir.reworkCount = (int) allCommits.stream()
-                .filter(c -> c.getAuthorId() != null
-                        && !c.getAuthorId().equals(authorId)
-                        && MetricsCalculator.isBugFix(c.getCommitMessage())
-                        && c.getLinkedIssueId() != null
-                        && myIssueIds.contains(c.getLinkedIssueId()))
-                .map(Commit::getLinkedIssueId)
-                .collect(Collectors.toSet())
-                .size();
+        // Overdue task count — tasks past due date and not completed (used as penalty)
+        ir.overdueTaskCount = (int) myIssues.stream()
+                .filter(i -> i.getDueDate() != null
+                        && i.getDueDate().isBefore(LocalDate.now(ZoneOffset.UTC))
+                        && !"Done".equalsIgnoreCase(i.getStatus()))
+                .count();
 
         // Smart Coder Bonus — rewards efficiency (tasks / log10 lines)
         ir.smartCoderBonus = MetricsCalculator.calcSmartCoderBonus(completed, totalAdded);
-        double jiraQuality = MetricsCalculator.calcJiraQualityFactor(ir.reworkCount);
+        // Use overdueTaskCount as quality penalty (trễ hạn bị trừ điểm)
+        double jiraQuality = MetricsCalculator.calcJiraQualityFactor(ir.overdueTaskCount);
         ir.rawJiraScore    = (assigned > 0 ? (double) completed / assigned : 0.0)
                              * jiraQuality
                              * ir.smartCoderBonus;
@@ -297,7 +306,7 @@ public class ContributionCalculator {
                 .tasksCompleted(ir.tasksCompleted)
                 .tasksInProgress(ir.tasksInProgress)
                 .taskCompletionRate(round2(ir.taskCompletionRate))
-                .reworkCount(ir.reworkCount)
+                .overdueTaskCount(ir.overdueTaskCount)
                 .smartCoderBonus(round2(ir.smartCoderBonus))
                 .githubImpactScore(round2(ir.githubImpactScore))
                 .jiraExecutionScore(round2(ir.jiraExecutionScore))
@@ -342,7 +351,7 @@ public class ContributionCalculator {
         Instant lastActivity;
 
         // Jira
-        int    tasksAssigned, tasksCompleted, tasksInProgress, reworkCount;
+        int    tasksAssigned, tasksCompleted, tasksInProgress, overdueTaskCount;
         double taskCompletionRate, rawJiraScore;
         double jiraExecutionScore;  // set during normalization
         boolean hasOverdueTasks;

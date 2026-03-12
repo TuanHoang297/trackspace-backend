@@ -1,6 +1,7 @@
 package com.trackspace.analytics;
 
 import com.trackspace.common.ApiResponse;
+import com.trackspace.auth.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,6 +33,7 @@ import java.util.List;
 public class ContributionController {
 
     private final ContributionService contributionService;
+    private final AuthService authService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Recalculate
@@ -60,6 +62,7 @@ public class ContributionController {
             @RequestParam(defaultValue = "0.5") Double feWeight,
             @Parameter(description = "BACKEND repo weight (0–1, default 0.5)")
             @RequestParam(defaultValue = "0.5") Double beWeight) {
+        contributionService.checkProjectAccess(projectId);
         log.info("Recalculating contributions for project {} (feWeight={}, beWeight={})",
                 projectId, feWeight, beWeight);
         List<ContributionResponse> result = contributionService.recalculate(projectId, feWeight, beWeight);
@@ -78,6 +81,7 @@ public class ContributionController {
     @GetMapping("/contributions/project/{projectId}")
     public ResponseEntity<ApiResponse<List<ContributionResponse>>> getByProject(
             @PathVariable Integer projectId) {
+        contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(contributionService.getByProject(projectId)));
     }
 
@@ -109,6 +113,7 @@ public class ContributionController {
     @GetMapping("/dashboard/{projectId}")
     public ResponseEntity<ApiResponse<DashboardResponse>> getDashboard(
             @PathVariable Integer projectId) {
+        contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(contributionService.getDashboard(projectId)));
     }
 
@@ -150,6 +155,7 @@ public class ContributionController {
     @GetMapping("/issues/{projectId}")
     public ResponseEntity<ApiResponse<IssueDetectionResponse>> detectIssues(
             @PathVariable Integer projectId) {
+        contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(
                 contributionService.detectIssues(projectId)));
     }

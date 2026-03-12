@@ -1,8 +1,11 @@
 package com.trackspace.project;
 
+import com.trackspace.auth.AuthService;
 import com.trackspace.classroom.Group;
+import com.trackspace.classroom.GroupMemberRepository;
 import com.trackspace.classroom.GroupRepository;
 import com.trackspace.common.BadRequestException;
+import com.trackspace.common.ForbiddenException;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.common.UnauthorizedException;
 import com.trackspace.user.User;
@@ -19,6 +22,8 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final ProjectInfoRepository projectInfoRepository;
     private final GroupRepository groupRepository;
+    private final AuthService authService;
+    private final GroupMemberRepository groupMemberRepository;
 
     private static final String PROJECT_NOT_FOUND = "Không tìm thấy project với ID: %d";
     private static final String GROUP_NOT_FOUND = "Không tìm thấy nhóm với ID: %d";
@@ -65,8 +70,23 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse getProjectById(Long projectId) {
         Project project = findActiveProjectById(projectId);
+        checkProjectAccess(project);
         boolean hasInfo = projectInfoRepository.existsByProjectId(projectId);
         return buildProjectResponse(project, hasInfo);
+    }
+
+    private void checkProjectAccess(Project project) {
+        var currentUser = authService.getCurrentUser();
+        User.Role role = currentUser.getRole();
+        if (role == User.Role.LECTURER || role == User.Role.ADMIN) return;
+        Long groupId = project.getGroup().getId();
+        boolean isMember = groupMemberRepository
+                .findByGroupIdWithMember(groupId)
+                .stream()
+                .anyMatch(gm -> gm.getMember().getId().equals(currentUser.getId()));
+        if (!isMember) {
+            throw new ForbiddenException("Bạn không có quyền xem dự án này");
+        }
     }
 
     /**

@@ -1,7 +1,9 @@
 package com.trackspace.analytics;
 
+import com.trackspace.auth.AuthService;
 import com.trackspace.classroom.GroupMember;
 import com.trackspace.classroom.GroupMemberRepository;
+import com.trackspace.common.ForbiddenException;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.jira.entity.JiraIssue;
 import com.trackspace.jira.repository.JiraIssueRepository;
@@ -42,6 +44,34 @@ public class ContributionService {
     private final JiraIssueRepository jiraIssueRepository;
     private final com.trackspace.github.repository.CommitRepository commitRepository;
     private final UserRepository userRepository;
+    private final AuthService authService;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Access Control
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Throws ForbiddenException if the currently authenticated user is neither
+     * a member of the project's group nor a LECTURER / ADMIN.
+     */
+    public void checkProjectAccess(Integer projectId) {
+        var currentUser = authService.getCurrentUser();
+        User.Role role = currentUser.getRole();
+        if (role == User.Role.LECTURER || role == User.Role.ADMIN) return;
+
+        Project project = projectRepository.findByIdAndDeletedFalse(projectId.longValue())
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + projectId));
+        Long groupId = project.getGroup().getId();
+
+        boolean isMember = groupMemberRepository
+                .findByGroupIdWithMember(groupId)
+                .stream()
+                .anyMatch(gm -> gm.getMember().getId().equals(currentUser.getId()));
+
+        if (!isMember) {
+            throw new ForbiddenException("Bạn không có quyền xem dự án này");
+        }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Recalculate & Persist
@@ -148,6 +178,7 @@ public class ContributionService {
 
         // Jira status distribution
         Map<String, Long> statusDist = jiraIssueRepository.findByProjectId(projectId).stream()
+                .filter(i -> i.getStatus() != null)
                 .collect(Collectors.groupingBy(JiraIssue::getStatus, Collectors.counting()));
 
         // Anomaly messages
@@ -232,7 +263,7 @@ public class ContributionService {
         target.setTasksCompleted(src.getTasksCompleted());
         target.setTasksInProgress(src.getTasksInProgress());
         target.setTaskCompletionRate(src.getTaskCompletionRate());
-        target.setReworkCount(src.getReworkCount());
+        target.setOverdueTaskCount(src.getOverdueTaskCount());
         target.setDomain(src.getDomain());
         target.setSmartCoderBonus(src.getSmartCoderBonus());
         target.setGithubImpactScore(src.getGithubImpactScore());
@@ -259,26 +290,26 @@ public class ContributionService {
                 .userId(m.getUserId())
                 .fullName(user != null ? user.getFullName() : "Unknown")
                 .email(user != null ? user.getEmail() : null)
-                .totalCommits(m.getTotalCommits())
-                .linesAdded(m.getLinesAdded())
-                .linesDeleted(m.getLinesDeleted())
-                .bugFixCommits(m.getBugFixCommits())
-                .githubImpactScore(m.getGithubImpactScore())
-                .activeDays(m.getActiveDays())
-                .consistencyFactor(m.getConsistencyFactor())
-                .tasksAssigned(m.getTasksAssigned())
-                .tasksCompleted(m.getTasksCompleted())
-                .tasksInProgress(m.getTasksInProgress())
-                .taskCompletionRate(m.getTaskCompletionRate())
-                .reworkCount(m.getReworkCount())
+                .totalCommits(m.getTotalCommits()        != null ? m.getTotalCommits()        : 0)
+                .linesAdded(m.getLinesAdded()            != null ? m.getLinesAdded()            : 0)
+                .linesDeleted(m.getLinesDeleted()        != null ? m.getLinesDeleted()        : 0)
+                .bugFixCommits(m.getBugFixCommits()      != null ? m.getBugFixCommits()      : 0)
+                .githubImpactScore(m.getGithubImpactScore() != null ? m.getGithubImpactScore() : 0.0)
+                .activeDays(m.getActiveDays()            != null ? m.getActiveDays()            : 0)
+                .consistencyFactor(m.getConsistencyFactor() != null ? m.getConsistencyFactor() : 1.0)
+                .tasksAssigned(m.getTasksAssigned()      != null ? m.getTasksAssigned()      : 0)
+                .tasksCompleted(m.getTasksCompleted()    != null ? m.getTasksCompleted()    : 0)
+                .tasksInProgress(m.getTasksInProgress()  != null ? m.getTasksInProgress()  : 0)
+                .taskCompletionRate(m.getTaskCompletionRate() != null ? m.getTaskCompletionRate() : 0.0)
+                .overdueTaskCount(m.getOverdueTaskCount() != null ? m.getOverdueTaskCount() : 0)
                 .domain(m.getDomain())
-                .smartCoderBonus(m.getSmartCoderBonus())
-                .jiraExecutionScore(m.getJiraExecutionScore())
-                .codeChurnRate(m.getCodeChurnRate())
-                .contributionScore(m.getContributionScore())
-                .inactive(m.getInactive())
-                .hasLowContribution(m.getHasLowContribution())
-                .hasOverdueTasks(m.getHasOverdueTasks())
+                .smartCoderBonus(m.getSmartCoderBonus()  != null ? m.getSmartCoderBonus()  : 1.0)
+                .jiraExecutionScore(m.getJiraExecutionScore() != null ? m.getJiraExecutionScore() : 0.0)
+                .codeChurnRate(m.getCodeChurnRate()      != null ? m.getCodeChurnRate()      : 0.0)
+                .contributionScore(m.getContributionScore() != null ? m.getContributionScore() : 0.0)
+                .inactive(Boolean.TRUE.equals(m.getInactive()))
+                .hasLowContribution(Boolean.TRUE.equals(m.getHasLowContribution()))
+                .hasOverdueTasks(Boolean.TRUE.equals(m.getHasOverdueTasks()))
                 .lastActivityDate(m.getLastActivityDate())
                 .calculatedAt(m.getCalculatedAt())
                 .build();
@@ -317,10 +348,6 @@ public class ContributionService {
                         m.getFullName() + " code churn rate "
                         + String.format("%.2f", m.getCodeChurnRate())
                         + " (deleted > added — possible low-quality code)");
-            if (m.getReworkCount() >= 2)
-                addIssue(issues, m, "HIGH_REWORK",
-                        m.getFullName() + "'s tasks required " + m.getReworkCount()
-                        + " bug-fix commits from teammates");
         }
         return issues;
     }
