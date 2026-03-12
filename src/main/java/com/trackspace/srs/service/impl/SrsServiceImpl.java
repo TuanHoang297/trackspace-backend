@@ -180,10 +180,9 @@ public class SrsServiceImpl implements SrsService {
          * Hard errors (rate-limit, bad model name) are rethrown immediately.
          */
         private String callGeminiApiWithRetry(String promptText) {
-                RuntimeException lastError = null;
                 for (int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
                         try {
-                                String rawJson = callGeminiApi(promptText, null);
+                                String rawJson = callGeminiApi(promptText);
                                 validateSrsJson(rawJson);
                                 if (attempt > 1) {
                                         log.info("[SRS] Retry attempt {}/{} succeeded.", attempt, MAX_RETRY_ATTEMPTS);
@@ -195,7 +194,6 @@ public class SrsServiceImpl implements SrsService {
                                 if (msg.contains("quá tải") || msg.contains("model AI")) {
                                         throw e;
                                 }
-                                lastError = e;
                                 log.warn("[SRS] Attempt {}/{} produced invalid/incomplete JSON: {}. Retrying...",
                                         attempt, MAX_RETRY_ATTEMPTS, msg);
                         }
@@ -205,7 +203,7 @@ public class SrsServiceImpl implements SrsService {
                         "AI không thể tạo nội dung hợp lệ sau các lần thử. Vui lòng thử lại sau ít phút.");
         }
 
-        private String callGeminiApi(String promptText, String pdfBase64) {
+        private String callGeminiApi(String promptText) {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                                 + geminiModel + ":generateContent?key=" + geminiApiKey;
 

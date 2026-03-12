@@ -3,12 +3,9 @@ package com.trackspace.srs.service.impl;
 import com.trackspace.jira.entity.JiraIssue;
 import com.trackspace.project.ProjectInfo;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.time.LocalDate;
-import java.util.Base64;
 import java.util.List;
 
 @Component
