@@ -145,6 +145,19 @@ public final class MetricsCalculator {
     }
 
     /**
+     * Returns {@code true} if the commit is a merge commit (should be excluded from
+     * contribution calculations, consistent with how GitHub counts contributions).
+     */
+    public static boolean isMergeCommit(String commitMessage) {
+        if (commitMessage == null || commitMessage.isBlank()) return false;
+        String lower = commitMessage.toLowerCase();
+        return lower.startsWith("merge pull request")
+                || lower.startsWith("merge branch")
+                || lower.startsWith("merge remote")
+                || lower.startsWith("merge tag");
+    }
+
+    /**
      * Consistency multiplier based on the number of days with at least one commit.
      *
      * <pre>

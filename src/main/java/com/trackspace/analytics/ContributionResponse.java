@@ -48,8 +48,8 @@ public class ContributionResponse {
     private int tasksInProgress;
     /** taskCompletionRate as percentage 0–100 */
     private double taskCompletionRate;
-    /** Bug tasks linked to this user's original tasks (quality penalty signal) */
-    private int reworkCount;
+    /** Number of tasks past their due date and not yet completed (penalty signal) */
+    private int overdueTaskCount;
     /** Normalized Jira Execution Score 0–100 */
     private double jiraExecutionScore;
 

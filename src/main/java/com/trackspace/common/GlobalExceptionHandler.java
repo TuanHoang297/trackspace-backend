@@ -58,6 +58,12 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.UNAUTHORIZED);
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleForbiddenException(
+            ForbiddenException ex, WebRequest request) {
+        return new ResponseEntity<>(ApiResponse.error(ex.getMessage()), HttpStatus.FORBIDDEN);
+    }
+
     @ExceptionHandler(DisabledException.class)
     public ResponseEntity<ApiResponse<Map<String, Object>>> handleDisabledException(
             DisabledException ex, WebRequest request) {
