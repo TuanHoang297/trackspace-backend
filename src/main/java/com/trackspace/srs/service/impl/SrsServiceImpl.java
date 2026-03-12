@@ -1,5 +1,7 @@
 package com.trackspace.srs.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.jira.entity.JiraIssue;
 import com.trackspace.jira.repository.JiraIssueRepository;
@@ -37,6 +39,7 @@ public class SrsServiceImpl implements SrsService {
         private final AIPromptBuilder aiPromptBuilder;
         private final SrsExportService srsExportService;
         private final WebClient webClient;
+        private final ObjectMapper objectMapper;
 
         @Value("${ai.gemini.api-key}")
         private String geminiApiKey;
@@ -71,7 +74,7 @@ public class SrsServiceImpl implements SrsService {
                 String promptText = aiPromptBuilder.buildPrompt(
                                 info, issues, groupName, creator.getFullName(), nextVersion);
 
-                String markdownContent = callGeminiApi(promptText, null);
+                String markdownContent = callGeminiApiWithRetry(promptText);
 
                 String title = "SRS - " + info.getProject().getProjectName() + " v" + nextVersion;
 
@@ -169,6 +172,39 @@ public class SrsServiceImpl implements SrsService {
 
         // ==================== Gemini API ====================
 
+        private static final int MAX_RETRY_ATTEMPTS = 3;
+
+        /**
+         * Calls Gemini and validates the JSON response, retrying up to
+         * {@link #MAX_RETRY_ATTEMPTS} times on incomplete/invalid output.
+         * Hard errors (rate-limit, bad model name) are rethrown immediately.
+         */
+        private String callGeminiApiWithRetry(String promptText) {
+                RuntimeException lastError = null;
+                for (int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+                        try {
+                                String rawJson = callGeminiApi(promptText, null);
+                                validateSrsJson(rawJson);
+                                if (attempt > 1) {
+                                        log.info("[SRS] Retry attempt {}/{} succeeded.", attempt, MAX_RETRY_ATTEMPTS);
+                                }
+                                return rawJson;
+                        } catch (RuntimeException e) {
+                                String msg = e.getMessage() != null ? e.getMessage() : "";
+                                // Non-retryable: rate-limit or misconfigured model
+                                if (msg.contains("quá tải") || msg.contains("model AI")) {
+                                        throw e;
+                                }
+                                lastError = e;
+                                log.warn("[SRS] Attempt {}/{} produced invalid/incomplete JSON: {}. Retrying...",
+                                        attempt, MAX_RETRY_ATTEMPTS, msg);
+                        }
+                }
+                log.error("[SRS] All {} attempts failed to produce valid SRS JSON.", MAX_RETRY_ATTEMPTS);
+                throw new RuntimeException(
+                        "AI không thể tạo nội dung hợp lệ sau các lần thử. Vui lòng thử lại sau ít phút.");
+        }
+
         private String callGeminiApi(String promptText, String pdfBase64) {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                                 + geminiModel + ":generateContent?key=" + geminiApiKey;
@@ -225,6 +261,53 @@ public class SrsServiceImpl implements SrsService {
                 } catch (Exception e) {
                         log.error("Failed to parse Gemini response: {}", response, e);
                         throw new RuntimeException("AI generation thất bại. Vui lòng thử lại sau.");
+                }
+        }
+
+        // ==================== JSON Validation ====================
+
+        private static final List<String> REQUIRED_SRS_KEYS = List.of(
+                "projectName", "introduction", "businessMainFlows", "businessRules",
+                "useCases", "systemFunctions", "highLevelDesign", "functionalRequirements");
+
+        /**
+         * Validates that the AI-generated string is well-formed JSON and contains
+         * all top-level SRS fields. Throws {@link RuntimeException} with a
+         * user-friendly message if the content is incomplete or unparseable —
+         * preventing corrupted data from being saved to the database.
+         */
+        private void validateSrsJson(String rawJson) {
+                JsonNode root;
+                try {
+                        root = objectMapper.readTree(rawJson);
+                } catch (Exception e) {
+                        String preview = rawJson != null
+                                ? rawJson.substring(0, Math.min(300, rawJson.length()))
+                                : "(null)";
+                        log.error("[SRS] AI returned unparseable JSON. Preview: {}...", preview);
+                        throw new RuntimeException(
+                                "AI trả về nội dung không hợp lệ (JSON bị lỗi cú pháp). Vui lòng thử lại.");
+                }
+
+                // 2. Root must be a JSON object
+                if (!root.isObject()) {
+                        log.error("[SRS] AI returned non-object JSON type: {}", root.getNodeType());
+                        throw new RuntimeException(
+                                "AI trả về nội dung không hợp lệ (không phải JSON object). Vui lòng thử lại.");
+                }
+
+                // 3. All required top-level fields must be present and non-null
+                List<String> missing = REQUIRED_SRS_KEYS.stream()
+                                .filter(key -> !root.has(key) || root.get(key).isNull())
+                                .toList();
+
+                if (!missing.isEmpty()) {
+                        String preview = rawJson.substring(0, Math.min(300, rawJson.length()));
+                        log.error("[SRS] AI returned JSON missing required fields: {}. Preview: {}...",
+                                missing, preview);
+                        throw new RuntimeException(
+                                "AI trả về nội dung không đầy đủ (thiếu: " + String.join(", ", missing)
+                                        + "). Nội dung có thể bị cắt ngắn. Vui lòng thử lại.");
                 }
         }
 
