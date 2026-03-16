@@ -1,14 +1,18 @@
 package com.trackspace.srs.service.impl;
 
+import com.trackspace.common.BadRequestException;
 import com.trackspace.srs.dto.SrsVisionRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -26,10 +30,11 @@ public class SrsVisionService {
     @Value("${ai.gemini.api-key}")
     private String geminiApiKey;
 
-    @Value("${ai.gemini.model:gemini-2.0-flash}")
+    @Value("${ai.gemini.model:gemini-3.1-flash-lite-preview}")
     private String geminiModel;
 
     private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final int MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 
     /**
      * Analyzes an image and generates SRS text based on the image type.
@@ -69,6 +74,9 @@ public class SrsVisionService {
                     log.info("[SRS Vision] Retry attempt {}/{} succeeded.", attempt, MAX_RETRY_ATTEMPTS);
                 }
                 return result;
+            } catch (BadRequestException e) {
+                // Validation / payload errors are not transient, so do not retry.
+                throw e;
             } catch (RuntimeException e) {
                 String msg = e.getMessage() != null ? e.getMessage() : "";
                 if (msg.contains("quá tải") || msg.contains("model AI")) {
@@ -78,7 +86,7 @@ public class SrsVisionService {
                         attempt, MAX_RETRY_ATTEMPTS, msg);
             }
         }
-        throw new RuntimeException(
+        throw new BadRequestException(
                 "AI không thể phân tích ảnh sau các lần thử. Vui lòng thử lại sau.");
     }
 
@@ -127,22 +135,25 @@ public class SrsVisionService {
                     .block();
 
             if (response == null) {
-                throw new RuntimeException("Gemini Vision API returned null response");
+                throw new BadRequestException("Gemini Vision API trả về phản hồi rỗng");
             }
 
             return parseGeminiResponse(response);
 
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException.TooManyRequests e) {
             log.error("Gemini Vision API Rate Limit (429)", e);
-            throw new RuntimeException("AI đang quá tải. Vui lòng đợi 1 phút rồi thử lại.");
+            throw new BadRequestException("AI đang quá tải. Vui lòng đợi 1 phút rồi thử lại.");
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException.NotFound e) {
             log.error("Gemini Vision API Model Not Found (404)", e);
-            throw new RuntimeException("Không tìm thấy model AI: " + geminiModel);
+            throw new BadRequestException("Không tìm thấy model AI: " + geminiModel + ". Vui lòng kiểm tra cấu hình ai.gemini.model.");
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException.BadRequest e) {
+            log.error("Gemini Vision API Bad Request (400): {}", e.getResponseBodyAsString(), e);
+            throw new BadRequestException("Yêu cầu AI Vision không hợp lệ: " + e.getResponseBodyAsString());
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             log.error("Gemini Vision API Error", e);
-            throw new RuntimeException("Lỗi kết nối AI Vision: " + e.getMessage());
+            throw new BadRequestException("Lỗi kết nối AI Vision: " + e.getMessage());
         }
     }
 
@@ -150,13 +161,15 @@ public class SrsVisionService {
         try {
             List<?> candidates = (List<?>) response.get("candidates");
             if (candidates == null || candidates.isEmpty())
-                throw new RuntimeException("No candidates in response");
+                throw new BadRequestException("AI Vision không trả về candidates hợp lệ");
             Map<?, ?> content = (Map<?, ?>) ((Map<?, ?>) candidates.get(0)).get("content");
             List<?> parts = (List<?>) content.get("parts");
             return (String) ((Map<?, ?>) parts.get(0)).get("text");
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to parse Gemini Vision response: {}", response, e);
-            throw new RuntimeException("AI Vision thất bại. Vui lòng thử lại.");
+            throw new BadRequestException("AI Vision trả dữ liệu không đúng định dạng");
         }
     }
 
@@ -182,33 +195,64 @@ public class SrsVisionService {
         try {
             Base64.getDecoder().decode(cleanBase64);
         } catch (IllegalArgumentException e) {
-            throw new RuntimeException("Invalid base64 image data");
+            throw new BadRequestException("Dữ liệu ảnh base64 không hợp lệ");
         }
 
         return new ImagePayload(cleanBase64, mimeType);
     }
 
     private ImagePayload downloadImageAsBase64(String imageUrl) {
+        HttpURLConnection connection = null;
         try {
-            ResponseEntity<byte[]> response = webClient.get()
-                    .uri(imageUrl)
-                    .retrieve()
-                    .toEntity(byte[].class)
-                    .block();
+            URL url = new URL(imageUrl);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(20000);
 
-            if (response == null || response.getBody() == null || response.getBody().length == 0) {
-                throw new RuntimeException("Image URL does not contain valid data");
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new BadRequestException("Không thể tải ảnh từ URL để phân tích. HTTP " + status);
             }
 
-            byte[] bytes = response.getBody();
-            String mimeType = response.getHeaders().getContentType() != null
-                    ? response.getHeaders().getContentType().toString()
+            String mimeType = connection.getContentType() != null
+                    ? connection.getContentType()
                     : "image/png";
+            if (!mimeType.toLowerCase().startsWith("image/")) {
+                throw new BadRequestException("URL không trỏ tới file ảnh hợp lệ");
+            }
+
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            int total = 0;
+            byte[] bytes;
+
+            try (InputStream inputStream = connection.getInputStream();
+                 ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    total += bytesRead;
+                    if (total > MAX_DOWNLOAD_BYTES) {
+                        throw new BadRequestException("Ảnh quá lớn để phân tích (tối đa 10MB)");
+                    }
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+                bytes = outputStream.toByteArray();
+            }
+
+            if (bytes.length == 0) {
+                throw new BadRequestException("Image URL does not contain valid data");
+            }
 
             return new ImagePayload(Base64.getEncoder().encodeToString(bytes), mimeType);
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Failed to download image from URL: {}", imageUrl, e);
-            throw new RuntimeException("Không thể tải ảnh từ URL để phân tích");
+            throw new BadRequestException("Không thể tải ảnh từ URL để phân tích");
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
