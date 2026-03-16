@@ -4,12 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.jira.entity.JiraIssue;
+import com.trackspace.jira.entity.JiraSprint;
 import com.trackspace.jira.repository.JiraIssueRepository;
+import com.trackspace.jira.repository.JiraSprintRepository;
+import com.trackspace.project.Project;
 import com.trackspace.project.ProjectInfo;
 import com.trackspace.project.ProjectInfoRepository;
+import com.trackspace.project.ProjectRepository;
 import com.trackspace.srs.SrsDocument;
 import com.trackspace.srs.SrsDocumentRepository;
 import com.trackspace.srs.dto.SrsDocumentResponse;
+import com.trackspace.srs.dto.SrsGenerateRequest;
 import com.trackspace.srs.dto.SrsUpdateRequest;
 import com.trackspace.srs.service.SrsService;
 import com.trackspace.user.User;
@@ -33,7 +38,9 @@ import java.util.Objects;
 public class SrsServiceImpl implements SrsService {
 
         private final ProjectInfoRepository projectInfoRepository;
+        private final ProjectRepository projectRepository;
         private final JiraIssueRepository jiraIssueRepository;
+        private final JiraSprintRepository jiraSprintRepository;
         private final SrsDocumentRepository srsDocumentRepository;
         private final UserRepository userRepository;
         private final AIPromptBuilder aiPromptBuilder;
@@ -53,15 +60,20 @@ public class SrsServiceImpl implements SrsService {
 
         @Override
         @Transactional
-        public SrsDocumentResponse generateSrs(Long projectId, Long currentUserId) {
+        public SrsDocumentResponse generateSrs(Long projectId, Long currentUserId, SrsGenerateRequest request) {
                 Objects.requireNonNull(projectId, "projectId cannot be null");
                 Objects.requireNonNull(currentUserId, "currentUserId cannot be null");
 
-                ProjectInfo info = projectInfoRepository.findByProjectId(projectId)
+                // ProjectInfo is optional (supplementary)
+                ProjectInfo info = projectInfoRepository.findByProjectId(projectId).orElse(null);
+
+                // Project is required — load directly
+                Project project = projectRepository.findById(projectId)
                                 .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Project chưa có Project Info. Vui lòng điền thông tin dự án trước."));
+                                                "Project không tồn tại với ID: " + projectId));
 
                 List<JiraIssue> issues = jiraIssueRepository.findByProjectId(projectId.intValue());
+                List<JiraSprint> sprints = jiraSprintRepository.findByProjectIdOrderByStartDateAsc(projectId.intValue());
 
                 User creator = userRepository.findById(currentUserId)
                                 .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
@@ -69,21 +81,24 @@ public class SrsServiceImpl implements SrsService {
                 Integer maxVersion = srsDocumentRepository.findMaxVersionNumberByProjectId(projectId);
                 Integer nextVersion = (maxVersion != null ? maxVersion : 0) + 1;
 
-                String groupName = info.getProject().getGroup().getGroupName();
+                String groupName = project.getGroup() != null ? project.getGroup().getGroupName() : "";
+                String projectName = project.getProjectName();
 
                 String promptText = aiPromptBuilder.buildPrompt(
-                                info, issues, groupName, creator.getFullName(), nextVersion);
+                                info, issues, sprints, groupName, creator.getFullName(), nextVersion,
+                                request != null ? request.getBusinessRules() : null,
+                                request != null ? request.getNonScreenFunctions() : null,
+                                request != null ? request.getNotes() : null);
 
-                String markdownContent = callGeminiApiWithRetry(promptText);
+                String jsonContent = callGeminiApiWithRetry(promptText);
 
-                String title = "SRS - " + info.getProject().getProjectName() + " v" + nextVersion;
+                String title = "SRS - " + projectName + " v" + nextVersion;
 
-                // 10. Save and respond
                 SrsDocument doc = SrsDocument.builder()
-                                .project(info.getProject())
+                                .project(project)
                                 .versionNumber(nextVersion)
                                 .title(title)
-                                .content(markdownContent)
+                                .content(jsonContent)
                                 .createdBy(creator)
                                 .build();
 
@@ -183,6 +198,8 @@ public class SrsServiceImpl implements SrsService {
                 for (int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
                         try {
                                 String rawJson = callGeminiApi(promptText);
+                                log.info("[SRS] Attempt {}/{} — response len={}", attempt, MAX_RETRY_ATTEMPTS,
+                                        rawJson != null ? rawJson.length() : 0);
                                 validateSrsJson(rawJson);
                                 if (attempt > 1) {
                                         log.info("[SRS] Retry attempt {}/{} succeeded.", attempt, MAX_RETRY_ATTEMPTS);
@@ -194,7 +211,7 @@ public class SrsServiceImpl implements SrsService {
                                 if (msg.contains("quá tải") || msg.contains("model AI")) {
                                         throw e;
                                 }
-                                log.warn("[SRS] Attempt {}/{} produced invalid/incomplete JSON: {}. Retrying...",
+                                log.warn("[SRS] Attempt {}/{} FAILED: {}",
                                         attempt, MAX_RETRY_ATTEMPTS, msg);
                         }
                 }
@@ -265,8 +282,7 @@ public class SrsServiceImpl implements SrsService {
         // ==================== JSON Validation ====================
 
         private static final List<String> REQUIRED_SRS_KEYS = List.of(
-                "projectName", "introduction", "businessMainFlows", "businessRules",
-                "useCases", "systemFunctions", "highLevelDesign", "functionalRequirements");
+                "projectName", "introduction");
 
         /**
          * Validates that the AI-generated string is well-formed JSON and contains

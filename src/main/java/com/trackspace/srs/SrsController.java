@@ -2,9 +2,12 @@ package com.trackspace.srs;
 
 import com.trackspace.auth.AuthService;
 import com.trackspace.common.ApiResponse;
+import com.trackspace.srs.dto.DocxExportRequest;
 import com.trackspace.srs.dto.SrsDocumentResponse;
+import com.trackspace.srs.dto.SrsGenerateRequest;
 import com.trackspace.srs.dto.SrsUpdateRequest;
 import com.trackspace.srs.service.SrsService;
+import com.trackspace.srs.service.impl.SrsExportService;
 import com.trackspace.user.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -19,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -32,13 +36,16 @@ public class SrsController {
 
     private final SrsService srsService;
     private final AuthService authService;
+    private final SrsExportService srsExportService;
 
     @PostMapping("/api/projects/{projectId}/srs/generate")
     @PreAuthorize("hasAnyRole('TEAMLEADER','TEAMMEMBER')")
-    @Operation(summary = "Generate SRS using AI", description = "Generates a new SRS document version from project info and Jira issues.")
-    public ResponseEntity<ApiResponse<SrsDocumentResponse>> generateSrs(@PathVariable Long projectId) {
+    @Operation(summary = "Generate SRS using AI", description = "Generates SRS draft with 4 basic sections from Jira issues + ProjectInfo + optional supplement data.")
+    public ResponseEntity<ApiResponse<SrsDocumentResponse>> generateSrs(
+            @PathVariable Long projectId,
+            @RequestBody(required = false) SrsGenerateRequest request) {
         User currentUser = authService.getCurrentUser();
-        SrsDocumentResponse response = srsService.generateSrs(projectId, currentUser.getId());
+        SrsDocumentResponse response = srsService.generateSrs(projectId, currentUser.getId(), request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Tạo SRS thành công", response));
     }
@@ -93,6 +100,23 @@ public class SrsController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(mediaType);
         headers.setContentDisposition(ContentDisposition.attachment().filename(fileName).build());
+
+        return new ResponseEntity<>(data, headers, HttpStatus.OK);
+    }
+
+    @PostMapping("/api/srs/export-docx")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @Operation(summary = "Export HTML content to DOCX", description = "Receives HTML from the editor and returns a .docx file.")
+    public ResponseEntity<byte[]> exportHtmlToDocx(@RequestBody DocxExportRequest request) {
+        byte[] data = srsExportService.exportToDocx(request.getHtmlContent(), request.getTitle());
+
+        String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.doc";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("application/msword"));
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(fileName, StandardCharsets.UTF_8)
+                .build());
 
         return new ResponseEntity<>(data, headers, HttpStatus.OK);
     }
