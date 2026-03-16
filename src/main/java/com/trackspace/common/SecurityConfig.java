@@ -9,6 +9,8 @@ import com.trackspace.auth.OAuth2UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -20,6 +22,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Security Configuration
@@ -83,11 +87,30 @@ public class SecurityConfig {
          */
         @Bean
         public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+                RequestMatcher apiRequestMatcher = new AntPathRequestMatcher("/api/**");
+
                 http
                                 .csrf(csrf -> csrf.disable())
                                 .cors(cors -> cors.configure(http))
+                                .formLogin(form -> form.disable())
+                                .httpBasic(basic -> basic.disable())
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .exceptionHandling(exception -> exception
+                                                .defaultAuthenticationEntryPointFor((request, response, ex) -> {
+                                                        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                                                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                                                        response.setCharacterEncoding("UTF-8");
+                                                        response.getWriter().write(
+                                                                        "{\"success\":false,\"message\":\"Unauthorized\",\"data\":null}");
+                                                }, apiRequestMatcher)
+                                                .defaultAccessDeniedHandlerFor((request, response, ex) -> {
+                                                        response.setStatus(HttpStatus.FORBIDDEN.value());
+                                                        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                                                        response.setCharacterEncoding("UTF-8");
+                                                        response.getWriter().write(
+                                                                        "{\"success\":false,\"message\":\"Forbidden\",\"data\":null}");
+                                                }, apiRequestMatcher))
                                 .authorizeHttpRequests(auth -> auth
                                                 // Public endpoints
                                                 .requestMatchers("/api/auth/**").permitAll()
