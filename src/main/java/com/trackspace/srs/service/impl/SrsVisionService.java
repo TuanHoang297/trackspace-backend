@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -81,29 +82,21 @@ public class SrsVisionService {
                 "AI không thể phân tích ảnh sau các lần thử. Vui lòng thử lại sau.");
     }
 
-    private String callGeminiVision(String prompt, String imageBase64) {
+    private String callGeminiVision(String prompt, String imageInput) {
         String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                 + geminiModel + ":generateContent?key=" + geminiApiKey;
 
-        // Clean base64 string — remove data URL prefix if present
-        String cleanBase64 = imageBase64;
-        String mimeType = "image/png";
-        if (imageBase64.contains(",")) {
-            String[] parts = imageBase64.split(",", 2);
-            cleanBase64 = parts[1];
-            // Extract MIME type from data URL (e.g. data:image/jpeg;base64,)
-            if (parts[0].contains("image/jpeg") || parts[0].contains("image/jpg")) {
-                mimeType = "image/jpeg";
-            } else if (parts[0].contains("image/webp")) {
-                mimeType = "image/webp";
-            }
-        }
-
-        // Validate base64
-        try {
-            Base64.getDecoder().decode(cleanBase64);
-        } catch (IllegalArgumentException e) {
-            throw new RuntimeException("Invalid base64 image data");
+        // Accept both base64 data URL and HTTP image URL (e.g. Cloudinary)
+        String cleanBase64;
+        String mimeType;
+        if (isHttpUrl(imageInput)) {
+            ImagePayload payload = downloadImageAsBase64(imageInput);
+            cleanBase64 = payload.base64();
+            mimeType = payload.mimeType();
+        } else {
+            ImagePayload payload = parseBase64Image(imageInput);
+            cleanBase64 = payload.base64();
+            mimeType = payload.mimeType();
         }
 
         // Build multimodal request: text prompt + image
@@ -165,5 +158,60 @@ public class SrsVisionService {
             log.error("Failed to parse Gemini Vision response: {}", response, e);
             throw new RuntimeException("AI Vision thất bại. Vui lòng thử lại.");
         }
+    }
+
+    private boolean isHttpUrl(String value) {
+        String normalized = value != null ? value.trim().toLowerCase() : "";
+        return normalized.startsWith("http://") || normalized.startsWith("https://");
+    }
+
+    private ImagePayload parseBase64Image(String imageBase64) {
+        String cleanBase64 = imageBase64;
+        String mimeType = "image/png";
+
+        if (imageBase64.contains(",")) {
+            String[] parts = imageBase64.split(",", 2);
+            cleanBase64 = parts[1];
+            if (parts[0].contains("image/jpeg") || parts[0].contains("image/jpg")) {
+                mimeType = "image/jpeg";
+            } else if (parts[0].contains("image/webp")) {
+                mimeType = "image/webp";
+            }
+        }
+
+        try {
+            Base64.getDecoder().decode(cleanBase64);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid base64 image data");
+        }
+
+        return new ImagePayload(cleanBase64, mimeType);
+    }
+
+    private ImagePayload downloadImageAsBase64(String imageUrl) {
+        try {
+            ResponseEntity<byte[]> response = webClient.get()
+                    .uri(imageUrl)
+                    .retrieve()
+                    .toEntity(byte[].class)
+                    .block();
+
+            if (response == null || response.getBody() == null || response.getBody().length == 0) {
+                throw new RuntimeException("Image URL does not contain valid data");
+            }
+
+            byte[] bytes = response.getBody();
+            String mimeType = response.getHeaders().getContentType() != null
+                    ? response.getHeaders().getContentType().toString()
+                    : "image/png";
+
+            return new ImagePayload(Base64.getEncoder().encodeToString(bytes), mimeType);
+        } catch (Exception e) {
+            log.error("Failed to download image from URL: {}", imageUrl, e);
+            throw new RuntimeException("Không thể tải ảnh từ URL để phân tích");
+        }
+    }
+
+    private record ImagePayload(String base64, String mimeType) {
     }
 }

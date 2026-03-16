@@ -110,10 +110,10 @@ public class SrsController {
     public ResponseEntity<byte[]> exportHtmlToDocx(@RequestBody DocxExportRequest request) {
         byte[] data = srsExportService.exportToDocx(request.getHtmlContent(), request.getTitle());
 
-        String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.doc";
+        String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.docx";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("application/msword"));
+        headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
         headers.setContentDisposition(ContentDisposition.attachment()
                 .filename(fileName, StandardCharsets.UTF_8)
                 .build());

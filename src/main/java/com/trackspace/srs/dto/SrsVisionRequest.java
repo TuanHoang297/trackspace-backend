@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class SrsVisionRequest {
-    /** Base64-encoded image data */
+    /** Base64 image data URL or public image URL (Cloudinary) */
     @NotNull
     private String image;
 
