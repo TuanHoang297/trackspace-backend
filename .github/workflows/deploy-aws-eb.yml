@@ -23,8 +23,10 @@ jobs:
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Rename JAR to app.jar
-        run: mv target/*.jar target/app.jar
+      - name: Prepare Elastic Beanstalk bundle
+        run: |
+          mv target/*.jar app.jar
+          zip -r deploy.zip app.jar .platform
 
       - name: Deploy to Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v22
@@ -35,5 +37,5 @@ jobs:
           environment_name: trackspace-prod
           region: ap-southeast-1
           version_label: ${{ github.sha }}-${{ github.run_attempt }}
-          deployment_package: target/app.jar
+          deployment_package: deploy.zip
           use_existing_version_if_available: true
