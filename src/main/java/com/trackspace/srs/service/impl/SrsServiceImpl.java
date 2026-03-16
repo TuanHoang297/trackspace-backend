@@ -86,9 +86,7 @@ public class SrsServiceImpl implements SrsService {
 
                 String promptText = aiPromptBuilder.buildPrompt(
                                 info, issues, sprints, groupName, creator.getFullName(), nextVersion,
-                                request != null ? request.getBusinessRules() : null,
-                                request != null ? request.getNonScreenFunctions() : null,
-                                request != null ? request.getNotes() : null);
+                                request != null ? request.getAdditionalInfo() : null);
 
                 String jsonContent = callGeminiApiWithRetry(promptText);
 

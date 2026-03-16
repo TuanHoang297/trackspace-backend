@@ -8,10 +8,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class SrsGenerateRequest {
-    /** Optional: Business Rules for SRS section I.3 */
-    private String businessRules;
-    /** Optional: Non-Screen Functions for SRS section I.5.4 */
-    private String nonScreenFunctions;
-    /** Optional: Extra notes for AI */
-    private String notes;
+    /** Optional: Additional info for AI (business rules, constraints, notes, etc.) */
+    private String additionalInfo;
 }

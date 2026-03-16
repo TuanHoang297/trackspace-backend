@@ -26,9 +26,7 @@ public class AIPromptBuilder {
             String groupName,
             String createdByName,
             Integer versionNumber,
-            String supplementBusinessRules,
-            String supplementNonScreenFunctions,
-            String supplementNotes) {
+            String additionalInfo) {
 
         StringBuilder sb = new StringBuilder();
 
@@ -83,8 +81,8 @@ public class AIPromptBuilder {
         sb.append("=== SECTION INSTRUCTIONS ===\n");
         sb.append("1. projectName + locationDate: Use project topic and current date.\n");
         sb.append("2. introduction: Write detailed overview and context from PROJECT DATA below.\n");
-        sb.append("3. businessRules: Generate from SUPPLEMENT DATA and infer from Jira issues (validation rules, constraints, permissions).\n");
-        sb.append("4. systemFunctions.nonScreenFunctions: Generate from SUPPLEMENT DATA (background services, sync jobs, APIs).\n");
+        sb.append("3. businessRules: Generate from ADDITIONAL INFO and infer from Jira issues (validation rules, constraints, permissions).\n");
+        sb.append("4. systemFunctions.nonScreenFunctions: Generate from ADDITIONAL INFO (background services, sync jobs, APIs).\n");
         sb.append("5. ALL other sections: Use EXACT placeholder text shown above. Do NOT generate content for them.\n");
         sb.append("6. Do NOT generate functionalRequirements. Section III will be generated later from Screen Flow.\n\n");
 
@@ -154,14 +152,12 @@ public class AIPromptBuilder {
         sb.append("Group Name: ").append(nullSafe(groupName)).append("\n");
         sb.append("Author: ").append(nullSafe(createdByName)).append("\n\n");
 
-        // --- Supplement Data ---
-        sb.append("=== SUPPLEMENT DATA ===\n");
-        sb.append("Business Rules (user-provided):\n");
-        sb.append(nullSafe(supplementBusinessRules)).append("\n\n");
-        sb.append("Non-Screen Functions (user-provided):\n");
-        sb.append(nullSafe(supplementNonScreenFunctions)).append("\n\n");
-        if (supplementNotes != null && !supplementNotes.isBlank()) {
-            sb.append("Additional Notes:\n").append(supplementNotes).append("\n\n");
+        // --- Additional Info ---
+        sb.append("=== ADDITIONAL INFO (user-provided) ===\n");
+        if (additionalInfo != null && !additionalInfo.isBlank()) {
+            sb.append(additionalInfo).append("\n\n");
+        } else {
+            sb.append("(No additional info provided. Infer from Jira data.)\n\n");
         }
 
         // --- Output Constraints ---
