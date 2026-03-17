@@ -11,7 +11,5 @@ public interface SrsService {
     SrsDocumentResponse getLatestSrs(Long projectId);
     List<SrsDocumentResponse> getAllVersions(Long projectId);
     SrsDocumentResponse updateSrs(Long srsId, SrsUpdateRequest request, Long currentUserId);
-    byte[] exportToPdf(Long srsId);
-    byte[] exportToDocx(Long srsId);
 }
 

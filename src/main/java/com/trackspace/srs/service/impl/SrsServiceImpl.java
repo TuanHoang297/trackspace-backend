@@ -44,7 +44,6 @@ public class SrsServiceImpl implements SrsService {
         private final SrsDocumentRepository srsDocumentRepository;
         private final UserRepository userRepository;
         private final AIPromptBuilder aiPromptBuilder;
-        private final SrsExportService srsExportService;
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
 
@@ -161,27 +160,6 @@ public class SrsServiceImpl implements SrsService {
                 return toResponse(savedDoc);
         }
 
-        // ==================== Export ====================
-
-        @Override
-        @Transactional(readOnly = true)
-        public byte[] exportToPdf(Long srsId) {
-                Objects.requireNonNull(srsId, "srsId cannot be null");
-                SrsDocument doc = srsDocumentRepository.findById(srsId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                String.format(SRS_NOT_FOUND, srsId)));
-                return srsExportService.exportToPdf(doc.getContent(), doc.getTitle());
-        }
-
-        @Override
-        @Transactional(readOnly = true)
-        public byte[] exportToDocx(Long srsId) {
-                Objects.requireNonNull(srsId, "srsId cannot be null");
-                SrsDocument doc = srsDocumentRepository.findById(srsId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                String.format(SRS_NOT_FOUND, srsId)));
-                return srsExportService.exportToDocx(doc.getContent(), doc.getTitle());
-        }
 
         // ==================== Gemini API ====================
 
