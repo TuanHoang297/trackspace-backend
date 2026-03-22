@@ -19,7 +19,20 @@ public class ImportResult {
     private int failedCount;
 
     @Builder.Default
+    private List<SuccessEntry> successes = new ArrayList<>();
+
+    @Builder.Default
     private List<ImportError> errors = new ArrayList<>();
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class SuccessEntry {
+        private int row;
+        private String email;
+        private String fullName;
+        private String role;
+    }
 
     @Data
     @AllArgsConstructor

@@ -35,6 +35,6 @@ public class RegisterRequest {
     private String fullName;
 
     @NotNull(message = "Role không được để trống")
-    @Schema(description = "User role (LECTURER, TEAMLEADER, TEAMMEMBER)", example = "LECTURER")
+    @Schema(description = "User role (LECTURER, STUDENT)", example = "LECTURER")
     private User.Role role;
 }

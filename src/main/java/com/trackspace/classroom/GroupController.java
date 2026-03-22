@@ -92,7 +92,7 @@ public class GroupController {
 
     @PutMapping("/{groupId}/leader")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
-    @Operation(summary = "Assign team leader", description = "Student must be a member of the group. Previous leader is demoted to TEAMMEMBER.")
+    @Operation(summary = "Assign team leader", description = "Student must be a member of the group.")
     public ResponseEntity<ApiResponse<GroupResponse>> assignLeader(
             @PathVariable Long classId,
             @PathVariable Long groupId,
@@ -106,7 +106,7 @@ public class GroupController {
     // ==================== Member Management ====================
 
     @GetMapping("/{groupId}/members")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get group members", description = "Get list of all members in a group")
     public ResponseEntity<ApiResponse<List<GroupMemberResponse>>> getGroupMembers(
             @PathVariable Long classId,

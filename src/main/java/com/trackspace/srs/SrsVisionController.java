@@ -30,7 +30,7 @@ public class SrsVisionController {
     private final ProjectInfoRepository projectInfoRepository;
 
     @PostMapping("/api/projects/{projectId}/srs/describe-image")
-    @PreAuthorize("hasAnyRole('TEAMLEADER','TEAMMEMBER')")
+    @PreAuthorize("hasRole('STUDENT')")
     @Operation(summary = "Analyze image and generate SRS text",
             description = "Send a diagram/mockup image and receive structured SRS text. Types: usecase, screenflow, db_schema, mockup.")
     public ResponseEntity<ApiResponse<String>> describeImage(

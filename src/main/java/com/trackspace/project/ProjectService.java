@@ -32,7 +32,7 @@ public class ProjectService {
 
     /**
      * Create project for a group. One group can only have one project.
-     * Accessible by: LECTURER (for groups in their class), TEAMLEADER (for their own group)
+     * Accessible by: LECTURER (for groups in their class), STUDENT (team leader, for their own group)
      */
     @Transactional
     public ProjectResponse createProject(Long groupId, CreateProjectRequest request, User currentUser) {
@@ -181,7 +181,7 @@ public class ProjectService {
 
     /**
      * LECTURER can access any group in their class.
-     * TEAMLEADER can only access their own group.
+     * STUDENT (team leader) can only access their own group.
      * ADMIN can access everything.
      */
     private void checkGroupAccess(Group group, User currentUser) {
@@ -192,7 +192,7 @@ public class ProjectService {
             }
             return;
         }
-        // TEAMLEADER: must be the leader of this group
+        // STUDENT (team leader): must be the leader of this group
         if (group.getTeamLeader() == null || !group.getTeamLeader().getId().equals(currentUser.getId())) {
             throw new UnauthorizedException("Bạn không phải Team Leader của nhóm này");
         }

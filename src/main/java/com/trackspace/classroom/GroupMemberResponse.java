@@ -28,7 +28,7 @@ public class GroupMemberResponse {
     @Schema(description = "Email")
     private String email;
 
-    @Schema(description = "Role (TEAMLEADER or TEAMMEMBER)")
+    @Schema(description = "Role (LEADER or MEMBER within group)")
     private User.Role role;
 
     @Schema(description = "Is this member the team leader of the group")

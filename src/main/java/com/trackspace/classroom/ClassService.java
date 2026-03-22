@@ -270,7 +270,7 @@ public class ClassService {
         User user = userRepository.findById(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         String.format(USER_NOT_FOUND, studentId)));
-        if (user.getRole() != User.Role.TEAMMEMBER && user.getRole() != User.Role.TEAMLEADER) {
+        if (user.getRole() != User.Role.STUDENT) {
             throw new BadRequestException("Người dùng với ID " + studentId + " không phải Student");
         }
         return user;

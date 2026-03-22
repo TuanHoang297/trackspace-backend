@@ -37,7 +37,7 @@ public class ProjectController {
     // ==================== Project CRUD ====================
 
     @PostMapping("/api/groups/{groupId}/project")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Create project for a group", description = "Creates one project for the group. Each group can only have one project.")
     public ResponseEntity<ApiResponse<ProjectResponse>> createProject(
             @PathVariable Long groupId,
@@ -49,7 +49,7 @@ public class ProjectController {
     }
 
     @GetMapping("/api/groups/{groupId}/project")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project by group")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectByGroup(
             @PathVariable Long groupId) {
@@ -58,7 +58,7 @@ public class ProjectController {
     }
 
     @GetMapping("/api/projects/{projectId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project by ID")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectById(
             @PathVariable Long projectId) {
@@ -76,7 +76,7 @@ public class ProjectController {
     }
 
     @PutMapping("/api/projects/{projectId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Update project name")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
             @PathVariable Long projectId,
@@ -112,7 +112,7 @@ public class ProjectController {
     }
 
     @GetMapping("/api/projects/{projectId}/info")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project info")
     public ResponseEntity<ApiResponse<ProjectInfoResponse>> getProjectInfo(
             @PathVariable Long projectId) {

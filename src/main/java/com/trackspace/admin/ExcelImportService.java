@@ -30,7 +30,7 @@ public class ExcelImportService {
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
 
-    private static final Set<String> VALID_ROLES = Set.of("LECTURER", "TEAMLEADER", "TEAMMEMBER");
+    private static final Set<String> VALID_ROLES = Set.of("LECTURER", "STUDENT");
 
     /**
      * Import users from Excel file
@@ -40,6 +40,7 @@ public class ExcelImportService {
         validateFile(file);
 
         List<ImportResult.ImportError> errors = new ArrayList<>();
+        List<ImportResult.SuccessEntry> successes = new ArrayList<>();
         int successCount = 0;
         int totalRows = 0;
 
@@ -101,7 +102,7 @@ public class ExcelImportService {
                     // Validate role
                     if (!VALID_ROLES.contains(roleStr)) {
                         errors.add(new ImportResult.ImportError(rowNum, email,
-                                "Role không hợp lệ. Chỉ chấp nhận: LECTURER, TEAMLEADER, TEAMMEMBER"));
+                                "Role không hợp lệ. Chỉ chấp nhận: LECTURER, STUDENT"));
                         continue;
                     }
 
@@ -129,6 +130,7 @@ public class ExcelImportService {
                     userRepository.save(user);
                     existingEmails.add(email);
                     batchEmails.add(email);
+                    successes.add(new ImportResult.SuccessEntry(rowNum, email, fullName, roleStr));
                     successCount++;
 
                 } catch (Exception e) {
@@ -147,6 +149,7 @@ public class ExcelImportService {
                 .totalRows(totalRows)
                 .successCount(successCount)
                 .failedCount(errors.size())
+                .successes(successes)
                 .errors(errors)
                 .build();
     }
@@ -186,7 +189,7 @@ public class ExcelImportService {
             Row example2 = sheet.createRow(2);
             example2.createCell(0).setCellValue("student@fpt.edu.vn");
             example2.createCell(1).setCellValue("Trần Thị B");
-            example2.createCell(2).setCellValue("TEAMMEMBER");
+            example2.createCell(2).setCellValue("STUDENT");
             example2.createCell(3).setCellValue("SE1234");
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -91,10 +91,7 @@ public class GroupService {
         Group group = findActiveGroupById(groupId);
         validateGroupBelongsToClass(group, classId);
 
-        // Nếu nhóm có team leader, đổi role về TEAMMEMBER
-        if (group.getTeamLeader() != null) {
-            demoteToMember(group.getTeamLeader());
-        }
+        // Leader info is tracked via group.teamLeader, no need to change user role
 
         group.setActive(false);
         groupRepository.save(group);
@@ -113,12 +110,7 @@ public class GroupService {
         }
 
         User newLeader = findUserById(studentId);
-        if (group.getTeamLeader() != null && !group.getTeamLeader().getId().equals(studentId)) {
-            demoteToMember(group.getTeamLeader());
-        }
-
-        newLeader.setRole(User.Role.TEAMLEADER);
-        userRepository.save(newLeader);
+        // Just update the group's leader reference (no role change needed)
         group.setTeamLeader(newLeader);
 
         Group updated = groupRepository.save(group);
@@ -174,9 +166,8 @@ public class GroupService {
                 .findByGroupIdAndMemberId(groupId, studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sinh viên không thuộc nhóm này"));
 
-        // Nếu xóa team leader khỏi nhóm, đổi role về TEAMMEMBER và xóa khỏi group
+        // If removing the team leader, clear the group's leader reference
         if (group.getTeamLeader() != null && group.getTeamLeader().getId().equals(studentId)) {
-            demoteToMember(group.getTeamLeader());
             group.setTeamLeader(null);
             groupRepository.save(group);
         }
@@ -210,10 +201,7 @@ public class GroupService {
         }
     }
 
-    private void demoteToMember(User user) {
-        user.setRole(User.Role.TEAMMEMBER);
-        userRepository.save(user);
-    }
+
 
     private GroupResponse buildGroupResponse(Group group, long memberCount) {
         User leader = group.getTeamLeader();

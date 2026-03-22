@@ -123,7 +123,7 @@ public class ClassController {
 
         @PostMapping("/{classId}/students")
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
-        @Operation(summary = "Add student to class", description = "Add a student (TEAMLEADER or TEAMMEMBER) to a class")
+        @Operation(summary = "Add student to class", description = "Add a STUDENT to a class")
         public ResponseEntity<ApiResponse<StudentInClassResponse>> addStudentToClass(
                         @PathVariable Long classId,
                         @Valid @RequestBody AddStudentRequest request) {

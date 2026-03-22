@@ -39,7 +39,7 @@ public class StudentController {
      * projects.
      */
     @GetMapping("/my-workspaces")
-    @PreAuthorize("hasAnyRole('TEAMLEADER', 'TEAMMEMBER')")
+    @PreAuthorize("hasRole('STUDENT')")
     @Operation(summary = "Get student workspaces", description = "Returns all groups and projects the current student belongs to")
     public ResponseEntity<ApiResponse<List<WorkspaceResponse>>> getMyWorkspaces() {
         User user = authService.getCurrentUser();

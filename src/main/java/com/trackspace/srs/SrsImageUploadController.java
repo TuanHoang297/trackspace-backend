@@ -25,7 +25,7 @@ public class SrsImageUploadController {
     private final SrsImageStorageService srsImageStorageService;
 
     @PostMapping("/upload")
-    @PreAuthorize("hasAnyRole('TEAMLEADER','TEAMMEMBER')")
+    @PreAuthorize("hasRole('STUDENT')")
     @Operation(summary = "Upload SRS image", description = "Upload image to Cloudinary and return a public URL")
     public ResponseEntity<ApiResponse<ImageUploadResponse>> uploadImage(@RequestParam("file") MultipartFile file) {
         ImageUploadResponse response = srsImageStorageService.uploadImage(file);
