@@ -69,20 +69,13 @@ public class CommitServiceImpl implements CommitService {
                     commitRepository.findAllShasByConnectionId(connection.getId()));
             log.info("Pre-loaded {} existing SHAs for connection {}", existingShas.size(), connection.getId());
 
-            // Determine since timestamp
+            // Always fetch full history (365 days) and rely on SHA deduplication.
+            // This ensures any commits missed by previous non-paginated syncs are captured.
             Instant since = request.getSince();
             if (since == null) {
-                // If DB has no commits (e.g. deleted), force full sync regardless of
-                // lastSyncAt
-                if (existingShas.isEmpty()) {
-                    since = Instant.now().minus(Duration.ofDays(365));
-                    log.info("No commits in DB for project {} — forcing full sync (365 days)",
-                            connection.getProjectId());
-                } else {
-                    since = connection.getLastSyncAt() != null
-                            ? connection.getLastSyncAt()
-                            : Instant.now().minus(Duration.ofDays(365));
-                }
+                since = Instant.now().minus(Duration.ofDays(365));
+                log.info("Full sync (365 days) for project {}, existing SHAs: {}",
+                        connection.getProjectId(), existingShas.size());
             }
 
             // Only sync DEFAULT branch for speed — other branches use real-time API (getCommitsByBranch)
@@ -124,12 +117,14 @@ public class CommitServiceImpl implements CommitService {
             log.info("Synced repo {}/{}: {} commits (stats loading in background)", owner, repo, totalSynced);
 
             // Background: fetch stats (lines added/deleted/files changed) asynchronously
-            if (!savedCommits.isEmpty()) {
-                String bgOwner = owner, bgRepo = repo;
-                String bgToken = connection.getAccessTokenEncrypted();
-                java.util.concurrent.CompletableFuture.runAsync(() -> {
-                    log.info("Background stats fetch started for {} commits (parallel)", savedCommits.size());
-                    // Fetch ALL commit stats in parallel
+            String bgOwner = owner, bgRepo = repo;
+            String bgToken = connection.getAccessTokenEncrypted();
+            Integer bgConnectionId = connection.getId();
+
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                // 1) Fetch stats for NEW commits
+                if (!savedCommits.isEmpty()) {
+                    log.info("Background stats fetch started for {} NEW commits", savedCommits.size());
                     List<java.util.concurrent.CompletableFuture<Void>> futures = savedCommits.stream()
                             .map(c -> java.util.concurrent.CompletableFuture.runAsync(() -> {
                                 try {
@@ -149,10 +144,66 @@ public class CommitServiceImpl implements CommitService {
                     try {
                         java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
                                 .get(120, java.util.concurrent.TimeUnit.SECONDS);
-                    } catch (Exception e) { log.debug("Some stats fetches timed out"); }
-                    log.info("Background stats fetch completed for {} commits", savedCommits.size());
-                });
-            }
+                    } catch (Exception e) { log.debug("Some new stats fetches timed out"); }
+                    log.info("Background stats fetch completed for {} NEW commits", savedCommits.size());
+                }
+
+                // 2) Backfill stats for EXISTING commits with missing stats (all zeros)
+                List<Commit> missingStatsCommits = commitRepository.findByConnectionIdAndMissingStats(bgConnectionId);
+                // Exclude merge commits (they legitimately have 0 stats)
+                missingStatsCommits = missingStatsCommits.stream()
+                        .filter(c -> {
+                            String msg = c.getCommitMessage();
+                            if (msg == null) return true;
+                            String lower = msg.toLowerCase().trim();
+                            return !lower.startsWith("merge pull request")
+                                    && !lower.startsWith("merge branch")
+                                    && !lower.startsWith("merge remote");
+                        })
+                        .collect(Collectors.toList());
+
+                if (!missingStatsCommits.isEmpty()) {
+                    log.info("Backfilling stats for {} existing commits with missing stats", missingStatsCommits.size());
+                    int backfillSuccess = 0;
+                    // Process in small batches to avoid rate limiting
+                    int batchSize = 10;
+                    for (int i = 0; i < missingStatsCommits.size(); i += batchSize) {
+                        List<Commit> batch = missingStatsCommits.subList(i,
+                                Math.min(i + batchSize, missingStatsCommits.size()));
+                        List<java.util.concurrent.CompletableFuture<Void>> backfillFutures = batch.stream()
+                                .map(c -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                                    try {
+                                        GitHubApiClient.GitHubCommitDetailDto detail = gitHubApiClient
+                                                .fetchCommitDetails(bgOwner, bgRepo, c.getCommitSha(), bgToken);
+                                        if (detail != null && detail.getStats() != null
+                                                && detail.getStats().getAdditions() != null) {
+                                            c.setLinesAdded(detail.getStats().getAdditions());
+                                            c.setLinesDeleted(detail.getStats().getDeletions() != null
+                                                    ? detail.getStats().getDeletions() : 0);
+                                            c.setFilesChanged(detail.getFiles() != null
+                                                    ? detail.getFiles().size() : 0);
+                                            commitRepository.save(c);
+                                        }
+                                    } catch (Exception e) {
+                                        log.debug("Backfill stats failed for {}: {}", c.getCommitSha(), e.getMessage());
+                                    }
+                                }))
+                                .collect(Collectors.toList());
+                        try {
+                            java.util.concurrent.CompletableFuture.allOf(
+                                    backfillFutures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                                    .get(60, java.util.concurrent.TimeUnit.SECONDS);
+                        } catch (Exception e) { log.debug("Batch backfill timed out at index {}", i); }
+                        // Throttle between batches
+                        if (i + batchSize < missingStatsCommits.size()) {
+                            try { Thread.sleep(500); } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    }
+                    log.info("Backfill stats completed for {} commits", missingStatsCommits.size());
+                }
+            });
         }
 
         log.info("Commit sync completed for project {}: {} synced, {} skipped",
@@ -304,14 +355,9 @@ public class CommitServiceImpl implements CommitService {
     }
 
     /**
-     * Smart author merging: same person may use different name/email combos.
-     * Strategy:
-     * 1. Extract GitHub username from noreply emails (e.g.
-     * 12345+TuanHoang297@users.noreply.github.com)
-     * 2. Build identity groups using Union-Find:
-     * - commits with same email → same person
-     * - if noreply email contains username X and another commit has authorName == X
-     * → same person
+     * Smart stats calculation using GitHub Statistics API for accurate lines added/deleted.
+     * Commit counts are from DB (non-merge), but line stats come directly from GitHub's
+     * Statistics API (/stats/contributors) which matches the Contributors page exactly.
      */
     private List<StatsResponse> calculateMergedStats(Integer projectId, Integer connectionId) {
         List<Commit> rawCommits = connectionId != null
@@ -320,7 +366,39 @@ public class CommitServiceImpl implements CommitService {
         if (rawCommits.isEmpty())
             return List.of();
 
-        // Exclude merge commits (GitHub doesn't count them in contributions)
+        // Try to get accurate stats from GitHub Statistics API
+        Connection connection = null;
+        if (connectionId != null) {
+            connection = connectionRepository.findById(connectionId).orElse(null);
+        } else {
+            // Find any active connection for this project
+            List<Connection> conns = connectionRepository.findByProjectId(projectId);
+            connection = conns.stream()
+                    .filter(c -> c.getStatus() == com.trackspace.github.ConnectionStatus.CONNECTED)
+                    .findFirst().orElse(null);
+        }
+
+        // Fetch GitHub Statistics API data
+        java.util.Map<String, long[]> githubStats = new java.util.HashMap<>(); // login -> [additions, deletions, commits]
+        if (connection != null) {
+            try {
+                String[] ownerRepo = parseRepositoryUrl(connection.getRepositoryUrl());
+                String token = connection.getAccessTokenEncrypted();
+                List<GitHubApiClient.ContributorStatsDto> contributorStats =
+                        gitHubApiClient.fetchContributorStats(ownerRepo[0], ownerRepo[1], token);
+                for (GitHubApiClient.ContributorStatsDto cs : contributorStats) {
+                    if (cs.getAuthor() != null && cs.getAuthor().getLogin() != null) {
+                        githubStats.put(cs.getAuthor().getLogin().toLowerCase(),
+                                new long[]{ cs.getTotalAdditions(), cs.getTotalDeletions(), cs.getTotal() != null ? cs.getTotal() : 0 });
+                    }
+                }
+                log.info("Fetched GitHub contributor stats for {} users", githubStats.size());
+            } catch (Exception e) {
+                log.warn("Failed to fetch GitHub contributor stats, falling back to DB stats: {}", e.getMessage());
+            }
+        }
+
+        // Exclude merge commits for commit counting
         List<Commit> nonMergeCommits = rawCommits.stream()
                 .filter(c -> {
                     String msg = c.getCommitMessage();
@@ -333,8 +411,7 @@ public class CommitServiceImpl implements CommitService {
                 })
                 .collect(Collectors.toList());
 
-        // Group by githubLogin (the actual GitHub account — 100% reliable)
-        // Use ALL commits to collect names, NON-MERGE for stats
+        // Group by githubLogin — collect display names from ALL commits
         Map<String, Set<String>> loginToNames = new java.util.LinkedHashMap<>();
         for (Commit c : rawCommits) {
             String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
@@ -343,6 +420,7 @@ public class CommitServiceImpl implements CommitService {
             loginToNames.computeIfAbsent(login, k -> new java.util.HashSet<>()).add(name);
         }
 
+        // Group non-merge commits for counting
         Map<String, List<Commit>> groups = new java.util.LinkedHashMap<>();
         for (Commit c : nonMergeCommits) {
             String login = c.getGithubLogin() != null ? c.getGithubLogin().toLowerCase()
@@ -355,6 +433,7 @@ public class CommitServiceImpl implements CommitService {
         for (Map.Entry<String, List<Commit>> entry : groups.entrySet()) {
             List<Commit> groupCommits = entry.getValue();
             Set<String> names = loginToNames.getOrDefault(entry.getKey(), Set.of());
+            String login = entry.getKey();
 
             // Prefer full name (contains space) over username
             String displayName = names.stream()
@@ -364,17 +443,26 @@ public class CommitServiceImpl implements CommitService {
                             .max(java.util.Comparator.comparingInt(String::length))
                             .orElse("Unknown"));
 
-            long totalAdded = groupCommits.stream().mapToLong(c -> c.getLinesAdded() != null ? c.getLinesAdded() : 0)
-                    .sum();
-            long totalDeleted = groupCommits.stream()
-                    .mapToLong(c -> c.getLinesDeleted() != null ? c.getLinesDeleted() : 0).sum();
+            long totalAdded;
+            long totalDeleted;
+
+            // Use GitHub Statistics API data if available, otherwise fall back to DB
+            if (githubStats.containsKey(login)) {
+                long[] gs = githubStats.get(login);
+                totalAdded = gs[0];
+                totalDeleted = gs[1];
+            } else {
+                totalAdded = groupCommits.stream().mapToLong(c -> c.getLinesAdded() != null ? c.getLinesAdded() : 0).sum();
+                totalDeleted = groupCommits.stream().mapToLong(c -> c.getLinesDeleted() != null ? c.getLinesDeleted() : 0).sum();
+            }
+
             Instant lastCommit = groupCommits.stream().map(Commit::getCommitDate).filter(d -> d != null)
                     .max(Instant::compareTo).orElse(null);
 
             result.add(StatsResponse.builder()
                     .userId(null)
                     .userName(displayName)
-                    .githubLogin(entry.getKey())
+                    .githubLogin(login)
                     .totalCommits((long) groupCommits.size())
                     .totalLinesAdded(totalAdded)
                     .totalLinesDeleted(totalDeleted)

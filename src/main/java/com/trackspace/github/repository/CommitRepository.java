@@ -89,4 +89,8 @@ public interface CommitRepository extends JpaRepository<Commit, Integer> {
                         @Param("endDate") Instant endDate);
 
         List<Commit> findByConnectionIdAndAuthorId(Integer connectionId, Integer authorId);
+
+        @Query("SELECT gc FROM Commit gc WHERE gc.connectionId = :connectionId " +
+                        "AND gc.linesAdded = 0 AND gc.linesDeleted = 0 AND gc.filesChanged = 0")
+        List<Commit> findByConnectionIdAndMissingStats(@Param("connectionId") Integer connectionId);
 }

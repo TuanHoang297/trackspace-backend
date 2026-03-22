@@ -79,7 +79,7 @@ public class GitHubApiClient {
         log.info("Fetching commits from {}/{}, branch: {}, since: {}", owner, repo, branch, since);
 
         try {
-            // Build URI with query parameters
+            // Build initial URI with query parameters
             UriComponentsBuilder uriBuilder = UriComponentsBuilder
                     .fromPath("/repos/{owner}/{repo}/commits")
                     .queryParam("per_page", 100);
@@ -91,30 +91,35 @@ public class GitHubApiClient {
                 uriBuilder.queryParam("sha", branch);
             }
 
-            // Dùng toUriString() để rootUri được áp dụng (không dùng toUri())
             String url = uriBuilder.buildAndExpand(owner, repo).toUriString();
-            log.info(">>> Calling GitHub API URL: {}", url);
-            log.info(">>> Token prefix: {}", token != null && token.length() > 10
-                    ? token.substring(0, 10) + "..."
-                    : "(empty or null)");
-
             HttpHeaders headers = createHeaders(token);
             HttpEntity<?> entity = new HttpEntity<>(headers);
 
-            ResponseEntity<GitHubCommitDto[]> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    GitHubCommitDto[].class);
+            // Paginated fetch — follow Link rel="next" headers
+            List<GitHubCommitDto> allCommits = new java.util.ArrayList<>();
+            int page = 1;
+            int maxPages = 10; // Safety cap: 10 pages × 100 = 1000 commits max
 
-            log.info(">>> GitHub API response status: {}", response.getStatusCode());
+            while (url != null && page <= maxPages) {
+                log.info(">>> Fetching page {} from GitHub API: {}", page, url);
 
-            List<GitHubCommitDto> commits = response.getBody() != null
-                    ? Arrays.asList(response.getBody())
-                    : Collections.emptyList();
+                ResponseEntity<GitHubCommitDto[]> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        entity,
+                        GitHubCommitDto[].class);
 
-            log.info("Completed fetching {} commits from {}/{}", commits.size(), owner, repo);
-            return commits;
+                if (response.getBody() != null && response.getBody().length > 0) {
+                    allCommits.addAll(Arrays.asList(response.getBody()));
+                }
+
+                // Parse Link header for next page URL
+                url = parseNextPageUrl(response.getHeaders());
+                page++;
+            }
+
+            log.info("Completed fetching {} commits from {}/{} ({} pages)", allCommits.size(), owner, repo, page - 1);
+            return allCommits;
 
         } catch (org.springframework.web.client.HttpClientErrorException ex) {
             // 409 Conflict → empty repository (no commits yet) → return empty
@@ -122,7 +127,6 @@ public class GitHubApiClient {
                 log.info("Repository {}/{} is empty (409 Conflict), returning empty commits", owner, repo);
                 return Collections.emptyList();
             }
-            // 401 Unauthorized hoặc 404 Not Found → ném lỗi rõ ràng
             String msg = switch (ex.getStatusCode().value()) {
                 case 401 -> "GitHub token không hợp lệ hoặc đã hết hạn";
                 case 403 -> "GitHub token không có quyền truy cập repo này";
@@ -140,6 +144,34 @@ public class GitHubApiClient {
     }
 
     /**
+     * Parse GitHub API Link header to extract "next" page URL.
+     * Format: <https://api.github.com/repos/...?page=2>; rel="next", <...>; rel="last"
+     *
+     * @param headers Response headers
+     * @return Next page URL or null if no more pages
+     */
+    private String parseNextPageUrl(HttpHeaders headers) {
+        List<String> linkHeaders = headers.get("Link");
+        if (linkHeaders == null || linkHeaders.isEmpty()) {
+            return null;
+        }
+        for (String linkHeader : linkHeaders) {
+            String[] links = linkHeader.split(",");
+            for (String link : links) {
+                String[] parts = link.trim().split(";");
+                if (parts.length == 2 && parts[1].trim().equals("rel=\"next\"")) {
+                    String url = parts[0].trim();
+                    // Remove < and > brackets
+                    if (url.startsWith("<") && url.endsWith(">")) {
+                        return url.substring(1, url.length() - 1);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Fetch detailed information for a specific commit
      * Including file changes and statistics
      * 
@@ -153,23 +185,50 @@ public class GitHubApiClient {
             String sha, String token) {
         log.debug("Fetching commit details for {}/{} - {}", owner, repo, sha);
 
-        try {
-            HttpHeaders headers = createHeaders(token);
-            HttpEntity<?> entity = new HttpEntity<>(headers);
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                HttpHeaders headers = createHeaders(token);
+                HttpEntity<?> entity = new HttpEntity<>(headers);
 
-            ResponseEntity<GitHubCommitDetailDto> response = restTemplate.exchange(
-                    "/repos/{owner}/{repo}/commits/{sha}",
-                    HttpMethod.GET,
-                    entity,
-                    GitHubCommitDetailDto.class,
-                    owner, repo, sha);
+                ResponseEntity<GitHubCommitDetailDto> response = restTemplate.exchange(
+                        "/repos/{owner}/{repo}/commits/{sha}",
+                        HttpMethod.GET,
+                        entity,
+                        GitHubCommitDetailDto.class,
+                        owner, repo, sha);
 
-            return response.getBody();
+                // GitHub returns 202 when stats are being computed — retry after delay
+                if (response.getStatusCode().value() == 202) {
+                    log.debug("GitHub returned 202 for commit {} (stats computing), attempt {}/{}",
+                            sha, attempt, maxRetries);
+                    if (attempt < maxRetries) {
+                        try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        continue;
+                    }
+                }
 
-        } catch (RestClientException ex) {
-            log.error("Error fetching commit details: {}", ex.getMessage());
-            return null;
+                GitHubCommitDetailDto body = response.getBody();
+                // Verify stats are actually present, not null
+                if (body != null && body.getStats() != null && body.getStats().getAdditions() != null) {
+                    return body;
+                }
+
+                // Stats are null — might need retry
+                if (attempt < maxRetries) {
+                    log.debug("Stats null for commit {}, retrying {}/{}", sha, attempt, maxRetries);
+                    try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    continue;
+                }
+                return body;
+
+            } catch (RestClientException ex) {
+                log.error("Error fetching commit details (attempt {}/{}): {}", attempt, maxRetries, ex.getMessage());
+                if (attempt >= maxRetries) return null;
+                try { Thread.sleep(1000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            }
         }
+        return null;
     }
 
     /**
@@ -241,11 +300,39 @@ public class GitHubApiClient {
     }
 
     /**
-     * Create HTTP headers for GitHub API requests
-     * 
-     * @param token GitHub personal access token
-     * @return HttpHeaders with authorization and accept headers
+     * Fetch contributor statistics using GitHub's Statistics API.
+     * Returns EXACT same data as GitHub Contributors page.
+     * GET /repos/{owner}/{repo}/stats/contributors
      */
+    public List<ContributorStatsDto> fetchContributorStats(String owner, String repo, String token) {
+        log.debug("Fetching contributor stats for {}/{}", owner, repo);
+        int maxRetries = 4;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                HttpHeaders headers = createHeaders(token);
+                HttpEntity<?> entity = new HttpEntity<>(headers);
+                ResponseEntity<ContributorStatsDto[]> response = restTemplate.exchange(
+                        "/repos/{owner}/{repo}/stats/contributors",
+                        HttpMethod.GET, entity, ContributorStatsDto[].class, owner, repo);
+                if (response.getStatusCode().value() == 202) {
+                    log.debug("GitHub 202 for contributor stats, attempt {}/{}", attempt, maxRetries);
+                    if (attempt < maxRetries) {
+                        try { Thread.sleep(3000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        continue;
+                    }
+                    return Collections.emptyList();
+                }
+                ContributorStatsDto[] body = response.getBody();
+                return body != null ? Arrays.asList(body) : Collections.emptyList();
+            } catch (RestClientException ex) {
+                log.error("Error fetching contributor stats (attempt {}/{}): {}", attempt, maxRetries, ex.getMessage());
+                if (attempt >= maxRetries) return Collections.emptyList();
+                try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            }
+        }
+        return Collections.emptyList();
+    }
+
     private HttpHeaders createHeaders(String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "token " + token);
@@ -363,6 +450,38 @@ public class GitHubApiClient {
         public static class BranchCommit {
             private String sha;
             private String url;
+        }
+    }
+
+    @Data
+    public static class ContributorStatsDto {
+        private Author author;
+        private Integer total; // total commits
+        private List<WeeklyStats> weeks;
+
+        @Data
+        public static class Author {
+            private String login;
+            private Long id;
+            @JsonProperty("avatar_url")
+            private String avatarUrl;
+        }
+
+        @Data
+        public static class WeeklyStats {
+            private Long w; // unix timestamp of week start
+            private Integer a; // additions
+            private Integer d; // deletions
+            private Integer c; // commits
+        }
+
+        public int getTotalAdditions() {
+            if (weeks == null) return 0;
+            return weeks.stream().mapToInt(w -> w.getA() != null ? w.getA() : 0).sum();
+        }
+        public int getTotalDeletions() {
+            if (weeks == null) return 0;
+            return weeks.stream().mapToInt(w -> w.getD() != null ? w.getD() : 0).sum();
         }
     }
 }
