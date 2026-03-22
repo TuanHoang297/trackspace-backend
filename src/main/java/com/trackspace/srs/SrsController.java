@@ -75,45 +75,16 @@ public class SrsController {
         return ResponseEntity.ok(ApiResponse.success("Cập nhật SRS thành công", response));
     }
 
-    @GetMapping("/api/srs/{srsId}/export")
+    @PostMapping("/api/srs/export-doc")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
-    @Operation(summary = "Export SRS to PDF or DOCX")
-    public ResponseEntity<byte[]> exportSrs(
-            @PathVariable Long srsId,
-            @RequestParam(defaultValue = "pdf") String format) {
+    @Operation(summary = "Export HTML content to DOC", description = "Receives HTML from the editor and returns a .doc file.")
+    public ResponseEntity<byte[]> exportHtmlToDoc(@RequestBody DocxExportRequest request) {
+        byte[] data = srsExportService.exportToDoc(request.getHtmlContent(), request.getTitle());
 
-        byte[] data;
-        String fileName;
-        MediaType mediaType;
-
-        if ("docx".equalsIgnoreCase(format)) {
-            data = srsService.exportToDocx(srsId);
-            fileName = "SRS_Export.docx";
-            mediaType = MediaType
-                    .parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        } else {
-            data = srsService.exportToPdf(srsId);
-            fileName = "SRS_Export.pdf";
-            mediaType = MediaType.APPLICATION_PDF;
-        }
+        String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.doc";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(mediaType);
-        headers.setContentDisposition(ContentDisposition.attachment().filename(fileName).build());
-
-        return new ResponseEntity<>(data, headers, HttpStatus.OK);
-    }
-
-    @PostMapping("/api/srs/export-docx")
-    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
-    @Operation(summary = "Export HTML content to DOCX", description = "Receives HTML from the editor and returns a .docx file.")
-    public ResponseEntity<byte[]> exportHtmlToDocx(@RequestBody DocxExportRequest request) {
-        byte[] data = srsExportService.exportToDocx(request.getHtmlContent(), request.getTitle());
-
-        String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.docx";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+        headers.setContentType(MediaType.parseMediaType("application/msword"));
         headers.setContentDisposition(ContentDisposition.attachment()
                 .filename(fileName, StandardCharsets.UTF_8)
                 .build());
