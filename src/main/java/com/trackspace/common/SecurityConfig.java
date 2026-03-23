@@ -121,6 +121,7 @@ public class SecurityConfig {
                                                 .requestMatchers("/api-docs/**").permitAll()
                                                 .requestMatchers("/api/v1/github/**").permitAll()
                                                 .requestMatchers("/api/v1/jira/**").permitAll()
+                                                .requestMatchers("/api/v1/events/**").permitAll()
                                                 // Admin endpoints
                                                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                                                 .requestMatchers("/api/users/**").hasRole("ADMIN")

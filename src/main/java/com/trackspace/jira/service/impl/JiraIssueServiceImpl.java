@@ -123,13 +123,28 @@ public class JiraIssueServiceImpl implements JiraIssueService {
 
             if (existingIssue.isPresent()) {
                 JiraIssue issue = existingIssue.get();
+                // Snapshot key fields to detect real changes
+                String prevStatus = issue.getStatus();
+                String prevSummary = issue.getSummary();
+                String prevPriority = issue.getPriority();
+                Integer prevSprintId = issue.getSprintId();
+                Integer prevAssigneeId = issue.getAssigneeId();
+
                 updateIssueFromDto(issue, jiraIssue);
                 // Override sprint from Agile API (more reliable)
                 if (issueKeyToSprintId.containsKey(issue.getIssueKey())) {
                     issue.setSprintId(issueKeyToSprintId.get(issue.getIssueKey()));
                 }
                 issueRepository.save(issue);
-                updatedCount++;
+
+                // Only count as updated if something actually changed
+                if (!java.util.Objects.equals(prevStatus, issue.getStatus())
+                        || !java.util.Objects.equals(prevSummary, issue.getSummary())
+                        || !java.util.Objects.equals(prevPriority, issue.getPriority())
+                        || !java.util.Objects.equals(prevSprintId, issue.getSprintId())
+                        || !java.util.Objects.equals(prevAssigneeId, issue.getAssigneeId())) {
+                    updatedCount++;
+                }
             } else {
                 JiraIssue issue = new JiraIssue();
                 issue.setProjectId(projectId);

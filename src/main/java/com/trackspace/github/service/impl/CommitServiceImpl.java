@@ -338,8 +338,20 @@ public class CommitServiceImpl implements CommitService {
             }
         }
 
+        // Build connectionId → repoLabel lookup 
+        Map<Integer, String> connLabelMap = connectionRepository.findByProjectId(projectId)
+                .stream()
+                .collect(Collectors.toMap(
+                        Connection::getId,
+                        c -> c.getRepoLabel() != null ? c.getRepoLabel() : "",
+                        (a, b) -> a));
+
         return commits.stream()
-                .map(this::mapToResponse)
+                .map(c -> {
+                    CommitResponse resp = mapToResponse(c);
+                    resp.setRepoLabel(connLabelMap.getOrDefault(c.getConnectionId(), ""));
+                    return resp;
+                })
                 .collect(Collectors.toList());
     }
 

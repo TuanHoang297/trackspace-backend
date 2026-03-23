@@ -65,11 +65,7 @@ public class ContributionCalculator {
             Integer projectId, List<User> members,
             double feWeight, double beWeight) {
 
-        List<Commit> allCommitsRaw = commitRepository.findByProjectId(projectId);
-        // Exclude merge commits — they should not count as contributions
-        List<Commit>    allCommits = allCommitsRaw.stream()
-                .filter(c -> !MetricsCalculator.isMergeCommit(c.getCommitMessage()))
-                .collect(Collectors.toList());
+        List<Commit> allCommits = commitRepository.findByProjectId(projectId);
         List<JiraIssue> allIssues  = jiraIssueRepository.findByProjectId(projectId);
 
         // ── Build connectionId → domain map ────────────────────────────────

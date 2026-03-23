@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -28,8 +29,13 @@ public class GitHubApiClient {
     private static final String GITHUB_API_BASE_URL = "https://api.github.com";
 
     public GitHubApiClient(RestTemplateBuilder restTemplateBuilder) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10_000);  // 10 seconds
+        factory.setReadTimeout(30_000);     // 30 seconds
+
         this.restTemplate = restTemplateBuilder
                 .rootUri(GITHUB_API_BASE_URL)
+                .requestFactory(() -> factory)
                 .build();
     }
 

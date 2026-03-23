@@ -25,4 +25,5 @@ public class CommitResponse {
     private Integer linesDeleted;
     private String branchName;
     private Integer linkedIssueId;
+    private String repoLabel;
 }

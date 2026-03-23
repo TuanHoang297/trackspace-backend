@@ -51,9 +51,25 @@ public class JiraSprintServiceImpl implements JiraSprintService {
             String externalId = String.valueOf(dto.getId());
             var existing = sprintRepository.findByJiraSprintId(externalId);
             if (existing.isPresent()) {
-                updateSprintFromDto(existing.get(), dto);
-                sprintRepository.save(existing.get());
-                updated++;
+                JiraSprint sprint = existing.get();
+                // Snapshot key fields to detect real changes
+                String prevName = sprint.getSprintName();
+                String prevGoal = sprint.getSprintGoal();
+                SprintStatus prevStatus = sprint.getStatus();
+                LocalDate prevStart = sprint.getStartDate();
+                LocalDate prevEnd = sprint.getEndDate();
+
+                updateSprintFromDto(sprint, dto);
+                sprintRepository.save(sprint);
+
+                // Only count as updated if something actually changed
+                if (!java.util.Objects.equals(prevName, sprint.getSprintName())
+                        || !java.util.Objects.equals(prevGoal, sprint.getSprintGoal())
+                        || !java.util.Objects.equals(prevStatus, sprint.getStatus())
+                        || !java.util.Objects.equals(prevStart, sprint.getStartDate())
+                        || !java.util.Objects.equals(prevEnd, sprint.getEndDate())) {
+                    updated++;
+                }
             } else {
                 JiraSprint sprint = new JiraSprint();
                 sprint.setProjectId(request.getProjectId());
