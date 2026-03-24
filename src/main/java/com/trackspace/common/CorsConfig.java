@@ -1,11 +1,14 @@
 package com.trackspace.common;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -13,9 +16,8 @@ import java.util.List;
 /**
  * CORS Configuration
  *
- * Reads allowed origins from application.properties (cors.allowed-origins)
- * so it works in both local and production (Azure) environments.
- * Exposes CorsConfigurationSource bean for Spring Security integration.
+ * Exposes both CorsConfigurationSource (for Spring Security) and
+ * CorsFilter (as highest-priority servlet filter for preflight handling).
  */
 @Configuration
 public class CorsConfig {
@@ -40,5 +42,13 @@ public class CorsConfig {
         source.registerCorsConfiguration("/**", config);
 
         return source;
+    }
+
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(
+                new CorsFilter(corsConfigurationSource()));
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return bean;
     }
 }
