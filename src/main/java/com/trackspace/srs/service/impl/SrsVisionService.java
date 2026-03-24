@@ -1,6 +1,7 @@
 package com.trackspace.srs.service.impl;
 
 import com.trackspace.common.BadRequestException;
+import com.trackspace.common.ServiceUnavailableException;
 import com.trackspace.srs.dto.SrsVisionRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -86,8 +87,8 @@ public class SrsVisionService {
                         attempt, MAX_RETRY_ATTEMPTS, msg);
             }
         }
-        throw new BadRequestException(
-                "AI không thể phân tích ảnh sau các lần thử. Vui lòng thử lại sau.");
+        throw new ServiceUnavailableException(
+                "Hệ thống AI (Gemini) hiện đang bận hoặc quá tải sau nhiều lần thử. Vui lòng quay lại thử lại sau ít phút.");
     }
 
     private String callGeminiVision(String prompt, String imageInput) {
@@ -142,7 +143,7 @@ public class SrsVisionService {
 
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException.TooManyRequests e) {
             log.error("Gemini Vision API Rate Limit (429)", e);
-            throw new BadRequestException("AI đang quá tải. Vui lòng đợi 1 phút rồi thử lại.");
+            throw new ServiceUnavailableException("Hệ thống AI đang quá tải (Rate Limit). Vui lòng đợi 1 phút rồi thử lại.");
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException.NotFound e) {
             log.error("Gemini Vision API Model Not Found (404)", e);
             throw new BadRequestException("Không tìm thấy model AI: " + geminiModel + ". Vui lòng kiểm tra cấu hình ai.gemini.model.");
@@ -153,7 +154,7 @@ public class SrsVisionService {
             throw e;
         } catch (Exception e) {
             log.error("Gemini Vision API Error", e);
-            throw new BadRequestException("Lỗi kết nối AI Vision: " + e.getMessage());
+            throw new ServiceUnavailableException("Không thể kết nối được tới AI Vision: " + e.getMessage());
         }
     }
 

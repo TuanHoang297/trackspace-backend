@@ -252,6 +252,8 @@ public class AIPromptBuilder {
                 sb.append("- Describe ALL visible UI elements (buttons, tables, forms, filters).\n");
                 sb.append("- Explain what happens when user interacts with each element.\n");
                 sb.append("- Include validation rules you can infer from the UI.\n");
+                sb.append("- IMPORTANT: GENERALIZE the data. DO NOT include specific hardcoded mockup numbers, names, or placeholder data from the image (e.g., do not write '42 accounts' or 'John Doe'). Instead, write 'displays the total number of accounts' or 'displays the user's name'.\n");
+                sb.append("- Focus on the structure, functionality, and purpose of the elements, not the exact dummy data.\n");
             }
 
             default -> {
