@@ -66,7 +66,7 @@ public class SrsController {
 
     @PutMapping("/api/srs/{srsId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
-    @Operation(summary = "Update SRS content", description = "Creates a new SRS version with updated content.")
+    @Operation(summary = "Update SRS content", description = "Updates the existing SRS document content in-place (does not create new version).")
     public ResponseEntity<ApiResponse<SrsDocumentResponse>> updateSrs(
             @PathVariable Long srsId,
             @Valid @RequestBody SrsUpdateRequest request) {

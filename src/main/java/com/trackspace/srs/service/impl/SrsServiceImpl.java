@@ -139,24 +139,13 @@ public class SrsServiceImpl implements SrsService {
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 String.format(SRS_NOT_FOUND, srsId)));
 
-                User editor = userRepository.findById(currentUserId)
-                                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
+                // Update content in-place (no new version — only generateSrs creates versions)
+                if (request.getTitle() != null) {
+                        existing.setTitle(request.getTitle());
+                }
+                existing.setContent(request.getContent());
 
-                Integer maxVersion = srsDocumentRepository
-                                .findMaxVersionNumberByProjectId(existing.getProject().getId());
-                Integer nextVersion = (maxVersion != null ? maxVersion : 0) + 1;
-
-                String newTitle = request.getTitle() != null ? request.getTitle() : existing.getTitle();
-
-                SrsDocument newVersion = SrsDocument.builder()
-                                .project(existing.getProject())
-                                .versionNumber(nextVersion)
-                                .title(newTitle)
-                                .content(request.getContent())
-                                .createdBy(editor)
-                                .build();
-
-                SrsDocument savedDoc = srsDocumentRepository.save(newVersion);
+                SrsDocument savedDoc = srsDocumentRepository.save(existing);
                 return toResponse(savedDoc);
         }
 

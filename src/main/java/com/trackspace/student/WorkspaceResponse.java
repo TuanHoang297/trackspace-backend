@@ -1,5 +1,6 @@
 package com.trackspace.student;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -32,5 +33,6 @@ public class WorkspaceResponse {
     private String projectName;
 
     @Schema(description = "Whether the student is team leader of this group")
+    @JsonProperty("isLeader")
     private boolean isLeader;
 }
