@@ -4,8 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -15,6 +15,7 @@ import java.util.List;
  *
  * Reads allowed origins from application.properties (cors.allowed-origins)
  * so it works in both local and production (Azure) environments.
+ * Exposes CorsConfigurationSource bean for Spring Security integration.
  */
 @Configuration
 public class CorsConfig {
@@ -23,7 +24,7 @@ public class CorsConfig {
     private String allowedOriginsRaw;
 
     @Bean
-    public CorsFilter corsFilter() {
+    public CorsConfigurationSource corsConfigurationSource() {
         List<String> allowedOrigins = Arrays.asList(allowedOriginsRaw.split(","));
 
         CorsConfiguration config = new CorsConfiguration();
@@ -35,6 +36,6 @@ public class CorsConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
 
-        return new CorsFilter(source);
+        return source;
     }
 }
