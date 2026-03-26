@@ -2,6 +2,7 @@ package com.trackspace.srs;
 
 import com.trackspace.auth.AuthService;
 import com.trackspace.common.ApiResponse;
+import com.trackspace.common.BadRequestException;
 import com.trackspace.srs.dto.DocxExportRequest;
 import com.trackspace.srs.dto.SrsDocumentResponse;
 import com.trackspace.srs.dto.SrsGenerateRequest;
@@ -78,7 +79,11 @@ public class SrsController {
     @PostMapping("/api/srs/export-doc")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Export HTML content to DOC", description = "Receives HTML from the editor and returns a .doc file.")
-    public ResponseEntity<byte[]> exportHtmlToDoc(@RequestBody DocxExportRequest request) {
+    public ResponseEntity<byte[]> exportHtmlToDoc(@Valid @RequestBody DocxExportRequest request) {
+        if (request.getHtmlContent() == null || request.getHtmlContent().isBlank()) {
+            throw new BadRequestException("Nội dung HTML không được để trống");
+        }
+
         byte[] data = srsExportService.exportToDoc(request.getHtmlContent(), request.getTitle());
 
         String fileName = request.getFileName() != null ? request.getFileName() : "SRS_Export.doc";

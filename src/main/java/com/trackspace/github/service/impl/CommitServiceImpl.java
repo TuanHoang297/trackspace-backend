@@ -134,6 +134,7 @@ public class CommitServiceImpl implements CommitService {
                                         c.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
                                         c.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
                                         c.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
+                                        applyFilteredStats(c, detail.getFiles());
                                         commitRepository.save(c);
                                     }
                                 } catch (Exception e) {
@@ -182,6 +183,7 @@ public class CommitServiceImpl implements CommitService {
                                                     ? detail.getStats().getDeletions() : 0);
                                             c.setFilesChanged(detail.getFiles() != null
                                                     ? detail.getFiles().size() : 0);
+                                            applyFilteredStats(c, detail.getFiles());
                                             commitRepository.save(c);
                                         }
                                     } catch (Exception e) {
@@ -602,9 +604,12 @@ public class CommitServiceImpl implements CommitService {
             commit.setLinesAdded(detail.getStats().getAdditions() != null ? detail.getStats().getAdditions() : 0);
             commit.setLinesDeleted(detail.getStats().getDeletions() != null ? detail.getStats().getDeletions() : 0);
             commit.setFilesChanged(detail.getFiles() != null ? detail.getFiles().size() : 0);
+            applyFilteredStats(commit, detail.getFiles());
         } else {
             commit.setLinesAdded(0);
             commit.setLinesDeleted(0);
+            commit.setLinesAddedCode(0);
+            commit.setLinesDeletedCode(0);
             commit.setFilesChanged(0);
         }
 
@@ -766,5 +771,69 @@ public class CommitServiceImpl implements CommitService {
         }
 
         return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Library file filter (for Contribution analytics)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Path prefixes that indicate library/generated/vendored files. */
+    private static final java.util.Set<String> EXCLUDED_PREFIXES = java.util.Set.of(
+            "node_modules/", ".next/", "dist/", "build/", "out/",
+            "vendor/", "public/lib/", ".yarn/", ".pnp.",
+            ".nuxt/", "coverage/", "__pycache__/", ".venv/", ".agent/"
+    );
+
+    /** Exact filenames that are auto-generated / lock files. */
+    private static final java.util.Set<String> EXCLUDED_FILES = java.util.Set.of(
+            "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+            "composer.lock", "gemfile.lock", "poetry.lock",
+            ".ds_store", "thumbs.db"
+    );
+
+    /**
+     * Returns true if the file path belongs to a library, generated, or vendored file
+     * that should NOT count toward contribution metrics.
+     */
+    static boolean isLibraryFile(String filename) {
+        if (filename == null) return false;
+        String lower = filename.toLowerCase().replace('\\', '/');
+
+        // Check basename against excluded filenames
+        String basename = lower.contains("/") ? lower.substring(lower.lastIndexOf('/') + 1) : lower;
+        if (EXCLUDED_FILES.contains(basename)) return true;
+
+        // Check path prefixes
+        for (String prefix : EXCLUDED_PREFIXES) {
+            if (lower.startsWith(prefix) || lower.contains("/" + prefix)) return true;
+        }
+
+        // Minified bundles
+        return lower.endsWith(".min.js") || lower.endsWith(".min.css") || lower.endsWith(".map");
+    }
+
+    /**
+     * Calculates lines added/deleted excluding library files and sets
+     * the filtered columns on the commit entity.
+     */
+    private void applyFilteredStats(Commit commit,
+                                    java.util.List<GitHubApiClient.GitHubCommitDetailDto.FileChange> files) {
+        if (files == null || files.isEmpty()) {
+            // No per-file data — fall back to total stats
+            commit.setLinesAddedCode(commit.getLinesAdded());
+            commit.setLinesDeletedCode(commit.getLinesDeleted());
+            return;
+        }
+
+        int addedCode = 0;
+        int deletedCode = 0;
+        for (GitHubApiClient.GitHubCommitDetailDto.FileChange f : files) {
+            if (!isLibraryFile(f.getFilename())) {
+                addedCode   += f.getAdditions() != null ? f.getAdditions() : 0;
+                deletedCode += f.getDeletions() != null ? f.getDeletions() : 0;
+            }
+        }
+        commit.setLinesAddedCode(addedCode);
+        commit.setLinesDeletedCode(deletedCode);
     }
 }

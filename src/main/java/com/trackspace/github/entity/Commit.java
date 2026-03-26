@@ -66,6 +66,14 @@ public class Commit {
     @Column(name = "lines_deleted", columnDefinition = "int UNSIGNED")
     private Integer linesDeleted;
 
+    /** Lines added excluding library/generated files (for contribution analytics only) */
+    @Column(name = "lines_added_code", columnDefinition = "int UNSIGNED")
+    private Integer linesAddedCode;
+
+    /** Lines deleted excluding library/generated files (for contribution analytics only) */
+    @Column(name = "lines_deleted_code", columnDefinition = "int UNSIGNED")
+    private Integer linesDeletedCode;
+
     @Column(name = "branch_name", columnDefinition = "TEXT")
     private String branchName;
 

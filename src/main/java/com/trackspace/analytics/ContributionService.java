@@ -210,8 +210,10 @@ public class ContributionService {
             LocalDate day = c.getCommitDate().atZone(ZoneOffset.UTC).toLocalDate();
             byDay.computeIfAbsent(day, k -> new int[]{0, 0, 0});
             byDay.get(day)[0]++;                                             // commitCount
-            byDay.get(day)[1] += c.getLinesAdded()   != null ? c.getLinesAdded()   : 0;
-            byDay.get(day)[2] += c.getLinesDeleted() != null ? c.getLinesDeleted() : 0;
+            byDay.get(day)[1] += c.getLinesAddedCode()   != null ? c.getLinesAddedCode()
+                               : (c.getLinesAdded()   != null ? c.getLinesAdded()   : 0);
+            byDay.get(day)[2] += c.getLinesDeletedCode() != null ? c.getLinesDeletedCode()
+                               : (c.getLinesDeleted() != null ? c.getLinesDeleted() : 0);
         }
 
         List<HeatmapResponse.HeatmapEntry> entries = byDay.entrySet().stream()
@@ -224,7 +226,8 @@ public class ContributionService {
                 .collect(Collectors.toList());
 
         int totalLinesAdded = commits.stream()
-                .mapToInt(c -> c.getLinesAdded() != null ? c.getLinesAdded() : 0).sum();
+                .mapToInt(c -> c.getLinesAddedCode() != null ? c.getLinesAddedCode()
+                             : (c.getLinesAdded() != null ? c.getLinesAdded() : 0)).sum();
 
         return HeatmapResponse.builder()
                 .userId(userId)

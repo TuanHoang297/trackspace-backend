@@ -203,8 +203,16 @@ public class ContributionCalculator {
         Instant lastActivity = null;
 
         for (Commit c : myCommits) {
-            int added   = c.getLinesAdded()   != null ? c.getLinesAdded()   : 0;
-            int deleted = c.getLinesDeleted() != null ? c.getLinesDeleted() : 0;
+            // Exclude merge commits from lines count and scoring to avoid double-counting branch commits
+            if (MetricsCalculator.isMergeCommit(c.getCommitMessage())) {
+                continue;
+            }
+
+            // Use library-filtered stats for contribution scoring (falls back to total if null)
+            int added   = c.getLinesAddedCode()   != null ? c.getLinesAddedCode()
+                        : (c.getLinesAdded()   != null ? c.getLinesAdded()   : 0);
+            int deleted = c.getLinesDeletedCode() != null ? c.getLinesDeletedCode()
+                        : (c.getLinesDeleted() != null ? c.getLinesDeleted() : 0);
             totalAdded   += added;
             totalDeleted += deleted;
 

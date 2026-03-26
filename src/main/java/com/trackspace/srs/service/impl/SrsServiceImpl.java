@@ -2,6 +2,9 @@ package com.trackspace.srs.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trackspace.auth.AuthService;
+import com.trackspace.classroom.GroupMemberRepository;
+import com.trackspace.common.ForbiddenException;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.jira.entity.JiraIssue;
 import com.trackspace.jira.entity.JiraSprint;
@@ -46,6 +49,8 @@ public class SrsServiceImpl implements SrsService {
         private final AIPromptBuilder aiPromptBuilder;
         private final WebClient webClient;
         private final ObjectMapper objectMapper;
+        private final AuthService authService;
+        private final GroupMemberRepository groupMemberRepository;
 
         @Value("${ai.gemini.api-key}")
         private String geminiApiKey;
@@ -63,13 +68,16 @@ public class SrsServiceImpl implements SrsService {
                 Objects.requireNonNull(projectId, "projectId cannot be null");
                 Objects.requireNonNull(currentUserId, "currentUserId cannot be null");
 
-                // ProjectInfo is optional (supplementary)
-                ProjectInfo info = projectInfoRepository.findByProjectId(projectId).orElse(null);
-
                 // Project is required — load directly
                 Project project = projectRepository.findById(projectId)
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Project không tồn tại với ID: " + projectId));
+
+                // Check project membership
+                checkProjectAccess(project);
+
+                // ProjectInfo is optional (supplementary)
+                ProjectInfo info = projectInfoRepository.findByProjectId(projectId).orElse(null);
 
                 List<JiraIssue> issues = jiraIssueRepository.findByProjectId(projectId.intValue());
                 List<JiraSprint> sprints = jiraSprintRepository.findByProjectIdOrderByStartDateAsc(projectId.intValue());
@@ -109,6 +117,12 @@ public class SrsServiceImpl implements SrsService {
         @Transactional(readOnly = true)
         public SrsDocumentResponse getLatestSrs(Long projectId) {
                 Objects.requireNonNull(projectId, "projectId cannot be null");
+
+                Project project = projectRepository.findById(projectId)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Project không tồn tại với ID: " + projectId));
+                checkProjectAccess(project);
+
                 return srsDocumentRepository
                                 .findFirstByProjectIdOrderByVersionNumberDesc(projectId)
                                 .map(this::toResponse)
@@ -120,6 +134,12 @@ public class SrsServiceImpl implements SrsService {
         @Transactional(readOnly = true)
         public List<SrsDocumentResponse> getAllVersions(Long projectId) {
                 Objects.requireNonNull(projectId, "projectId cannot be null");
+
+                Project project = projectRepository.findById(projectId)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Project không tồn tại với ID: " + projectId));
+                checkProjectAccess(project);
+
                 return srsDocumentRepository
                                 .findByProjectIdOrderByVersionNumberDesc(projectId)
                                 .stream()
@@ -138,6 +158,9 @@ public class SrsServiceImpl implements SrsService {
                 SrsDocument existing = srsDocumentRepository.findById(srsId)
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 String.format(SRS_NOT_FOUND, srsId)));
+
+                // Check project membership via the SRS document's project
+                checkProjectAccess(existing.getProject());
 
                 // Update content in-place (no new version — only generateSrs creates versions)
                 if (request.getTitle() != null) {
@@ -287,6 +310,28 @@ public class SrsServiceImpl implements SrsService {
                         throw new RuntimeException(
                                 "AI trả về nội dung không đầy đủ (thiếu: " + String.join(", ", missing)
                                         + "). Nội dung có thể bị cắt ngắn. Vui lòng thử lại.");
+                }
+        }
+
+        // ==================== Authorization ====================
+
+        /**
+         * Checks if the current user has access to the given project.
+         * ADMIN and LECTURER can access any project.
+         * STUDENT must be a member of the project's group.
+         */
+        private void checkProjectAccess(Project project) {
+                var currentUser = authService.getCurrentUser();
+                User.Role role = currentUser.getRole();
+                if (role == User.Role.ADMIN || role == User.Role.LECTURER) return;
+
+                Long groupId = project.getGroup().getId();
+                boolean isMember = groupMemberRepository
+                        .findByGroupIdWithMember(groupId)
+                        .stream()
+                        .anyMatch(gm -> gm.getMember().getId().equals(currentUser.getId()));
+                if (!isMember) {
+                        throw new ForbiddenException("Bạn không có quyền truy cập SRS của dự án này");
                 }
         }
 
