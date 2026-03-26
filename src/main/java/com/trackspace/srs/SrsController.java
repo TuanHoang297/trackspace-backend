@@ -43,7 +43,7 @@ public class SrsController {
     @PreAuthorize("hasRole('STUDENT')")
     @Operation(summary = "Generate SRS using AI", description = "Generates SRS draft with 4 basic sections from Jira issues + ProjectInfo + optional supplement data.")
     public ResponseEntity<ApiResponse<SrsDocumentResponse>> generateSrs(
-            @PathVariable Long projectId,
+            @PathVariable("projectId") Long projectId,
             @RequestBody(required = false) SrsGenerateRequest request) {
         User currentUser = authService.getCurrentUser();
         SrsDocumentResponse response = srsService.generateSrs(projectId, currentUser.getId(), request);
@@ -54,14 +54,14 @@ public class SrsController {
     @GetMapping("/api/projects/{projectId}/srs")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get latest SRS version")
-    public ResponseEntity<ApiResponse<SrsDocumentResponse>> getLatestSrs(@PathVariable Long projectId) {
+    public ResponseEntity<ApiResponse<SrsDocumentResponse>> getLatestSrs(@PathVariable("projectId") Long projectId) {
         return ResponseEntity.ok(ApiResponse.success(srsService.getLatestSrs(projectId)));
     }
 
     @GetMapping("/api/projects/{projectId}/srs/versions")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get all SRS versions")
-    public ResponseEntity<ApiResponse<List<SrsDocumentResponse>>> getAllVersions(@PathVariable Long projectId) {
+    public ResponseEntity<ApiResponse<List<SrsDocumentResponse>>> getAllVersions(@PathVariable("projectId") Long projectId) {
         return ResponseEntity.ok(ApiResponse.success(srsService.getAllVersions(projectId)));
     }
 
@@ -69,7 +69,7 @@ public class SrsController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Update SRS content", description = "Updates the existing SRS document content in-place (does not create new version).")
     public ResponseEntity<ApiResponse<SrsDocumentResponse>> updateSrs(
-            @PathVariable Long srsId,
+            @PathVariable("srsId") Long srsId,
             @Valid @RequestBody SrsUpdateRequest request) {
         User currentUser = authService.getCurrentUser();
         SrsDocumentResponse response = srsService.updateSrs(srsId, request, currentUser.getId());

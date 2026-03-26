@@ -98,7 +98,7 @@ public class JiraController {
         @Operation(summary = "Get Jira connection status")
         @GetMapping("/status/{projectId}")
         public ResponseEntity<ApiResponse<JiraConnectionResponse>> getConnectionStatus(
-                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable Integer projectId) {
+                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable("projectId") Integer projectId) {
 
                 log.debug("GET /api/v1/jira/status/{}", projectId);
                 JiraConnectionResponse response = connectionService.getConnectionStatus(projectId);
@@ -111,7 +111,7 @@ public class JiraController {
         @Operation(summary = "Disconnect Jira project", description = "Disconnects Jira from a project. Existing data is preserved.")
         @DeleteMapping("/disconnect/{projectId}")
         public ResponseEntity<ApiResponse<Void>> disconnect(
-                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable Integer projectId) {
+                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable("projectId") Integer projectId) {
 
                 log.info("DELETE /api/v1/jira/disconnect/{}", projectId);
                 connectionService.disconnect(projectId);
@@ -165,7 +165,7 @@ public class JiraController {
         @Operation(summary = "Get sprints for a project", description = "Returns all sprints with progress info (total issues, done issues)")
         @GetMapping("/sprints/{projectId}")
         public ResponseEntity<ApiResponse<List<JiraSprintResponse>>> getSprints(
-                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable Integer projectId) {
+                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable("projectId") Integer projectId) {
 
                 log.debug("GET /api/v1/jira/sprints/{}", projectId);
                 List<JiraSprintResponse> sprints = sprintService.getSprints(projectId);
@@ -185,7 +185,7 @@ public class JiraController {
                         """)
         @GetMapping("/issues/{projectId}")
         public ResponseEntity<ApiResponse<List<JiraIssueResponse>>> getIssues(
-                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable Integer projectId,
+                        @Parameter(description = "Project ID", required = true, example = "42") @PathVariable("projectId") Integer projectId,
 
                         @Parameter(description = "Filter by sprint ID") @RequestParam(required = false) Integer sprintId,
 
@@ -226,7 +226,7 @@ public class JiraController {
         @Operation(summary = "Update issue status", description = "Updates issue status in both TrackSpace and Jira. Uses Jira's transition API.")
         @PutMapping("/issues/{issueId}/status")
         public ResponseEntity<ApiResponse<JiraIssueResponse>> updateIssueStatus(
-                        @Parameter(description = "Issue ID", required = true, example = "1") @PathVariable Integer issueId,
+                        @Parameter(description = "Issue ID", required = true, example = "1") @PathVariable("issueId") Integer issueId,
 
                         @RequestBody Map<String, String> body) {
 
@@ -243,7 +243,7 @@ public class JiraController {
         @Operation(summary = "Assign issue to user on Jira")
         @PutMapping("/issues/{issueId}/assign")
         public ResponseEntity<ApiResponse<JiraIssueResponse>> assignIssue(
-                        @Parameter(description = "Issue ID", required = true, example = "1") @PathVariable Integer issueId,
+                        @Parameter(description = "Issue ID", required = true, example = "1") @PathVariable("issueId") Integer issueId,
 
                         @RequestBody Map<String, Object> body) {
 
@@ -264,7 +264,7 @@ public class JiraController {
         @Operation(summary = "Get assignable users from Jira project")
         @GetMapping("/projects/{projectId}/assignable-users")
         public ResponseEntity<ApiResponse<List<Map<String, String>>>> getAssignableUsers(
-                        @PathVariable Integer projectId) {
+                        @PathVariable("projectId") Integer projectId) {
                 log.info("GET /api/v1/jira/projects/{}/assignable-users", projectId);
                 List<Map<String, String>> result = issueService.getAssignableUsers(projectId);
                 return ResponseEntity.ok(ApiResponse.success("Assignable users retrieved", result));
@@ -275,7 +275,7 @@ public class JiraController {
         @Operation(summary = "Update issue", description = "Updates issue fields in both TrackSpace and Jira")
         @PutMapping("/issues/{issueId}")
         public ResponseEntity<ApiResponse<JiraIssueResponse>> updateIssue(
-                        @PathVariable Integer issueId,
+                        @PathVariable("issueId") Integer issueId,
                         @Valid @RequestBody JiraIssueRequest request) {
                 log.info("PUT /api/v1/jira/issues/{}", issueId);
                 JiraIssueResponse response = issueService.updateIssue(issueId, request);
@@ -284,7 +284,7 @@ public class JiraController {
 
         @Operation(summary = "Delete issue", description = "Deletes issue from both TrackSpace and Jira")
         @DeleteMapping("/issues/{issueId}")
-        public ResponseEntity<ApiResponse<Void>> deleteIssue(@PathVariable Integer issueId) {
+        public ResponseEntity<ApiResponse<Void>> deleteIssue(@PathVariable("issueId") Integer issueId) {
                 log.info("DELETE /api/v1/jira/issues/{}", issueId);
                 issueService.deleteIssue(issueId);
                 return ResponseEntity.ok(ApiResponse.success("Issue deleted", null));
@@ -305,7 +305,7 @@ public class JiraController {
         @Operation(summary = "Update sprint", description = "Updates sprint in both TrackSpace and Jira")
         @PutMapping("/sprints/{sprintId}")
         public ResponseEntity<ApiResponse<JiraSprintResponse>> updateSprint(
-                        @PathVariable Integer sprintId,
+                        @PathVariable("sprintId") Integer sprintId,
                         @Valid @RequestBody JiraSprintRequest request) {
                 log.info("PUT /api/v1/jira/sprints/{}", sprintId);
                 JiraSprintResponse response = sprintService.updateSprint(sprintId, request);
@@ -314,7 +314,7 @@ public class JiraController {
 
         @Operation(summary = "Delete sprint", description = "Deletes sprint from both TrackSpace and Jira")
         @DeleteMapping("/sprints/{sprintId}")
-        public ResponseEntity<ApiResponse<Void>> deleteSprint(@PathVariable Integer sprintId) {
+        public ResponseEntity<ApiResponse<Void>> deleteSprint(@PathVariable("sprintId") Integer sprintId) {
                 log.info("DELETE /api/v1/jira/sprints/{}", sprintId);
                 sprintService.deleteSprint(sprintId);
                 return ResponseEntity.ok(ApiResponse.success("Sprint deleted", null));

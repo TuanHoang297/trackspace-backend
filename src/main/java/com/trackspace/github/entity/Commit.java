@@ -74,6 +74,10 @@ public class Commit {
     @Column(name = "lines_deleted_code", columnDefinition = "int UNSIGNED")
     private Integer linesDeletedCode;
 
+    /** Per-file weighted lines: Σ(file.additions × fileWeight). Used by V2 contribution formula. */
+    @Column(name = "weighted_lines_added")
+    private Double weightedLinesAdded;
+
     @Column(name = "branch_name", columnDefinition = "TEXT")
     private String branchName;
 

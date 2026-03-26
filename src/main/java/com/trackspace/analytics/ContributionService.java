@@ -5,6 +5,9 @@ import com.trackspace.classroom.GroupMember;
 import com.trackspace.classroom.GroupMemberRepository;
 import com.trackspace.common.ForbiddenException;
 import com.trackspace.common.ResourceNotFoundException;
+import com.trackspace.github.entity.Commit;
+import com.trackspace.github.entity.Connection;
+import com.trackspace.github.repository.ConnectionRepository;
 import com.trackspace.jira.entity.JiraIssue;
 import com.trackspace.jira.repository.JiraIssueRepository;
 import com.trackspace.project.Project;
@@ -43,6 +46,7 @@ public class ContributionService {
     private final GroupMemberRepository groupMemberRepository;
     private final JiraIssueRepository jiraIssueRepository;
     private final com.trackspace.github.repository.CommitRepository commitRepository;
+    private final ConnectionRepository connectionRepository;
     private final UserRepository userRepository;
     private final AuthService authService;
 
@@ -78,24 +82,12 @@ public class ContributionService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * (Re)calculates all contribution metrics for a project and persists them.
+     * V2: (Re)calculates all contribution metrics for a project and persists them.
+     * Formula: 40% Code + 40% Task + 20% Consistency.
      * Idempotent: upserts by (projectId, userId).
-     * Uses default 50/50 domain weighting.
      */
     @Transactional
     public List<ContributionResponse> recalculate(Integer projectId) {
-        return recalculate(projectId, 0.5, 0.5);
-    }
-
-    /**
-     * (Re)calculates with explicit FRONTEND / BACKEND domain weights.
-     *
-     * @param feWeight weight for FRONTEND repo scores (0–1)
-     * @param beWeight weight for BACKEND repo scores  (0–1)
-     */
-    @Transactional
-    public List<ContributionResponse> recalculate(Integer projectId,
-                                                   double feWeight, double beWeight) {
         Project project = projectRepository.findByIdAndDeletedFalse(projectId.longValue())
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found: " + projectId));
 
@@ -112,23 +104,24 @@ public class ContributionService {
             return List.of();
         }
 
-        // Compute metrics with domain weights
-        List<ContributionMetric> computed = calculator.calculate(projectId, members, feWeight, beWeight);
+        // Gather raw data
+        List<Integer> memberUserIds = members.stream()
+                .map(u -> u.getId().intValue())
+                .collect(Collectors.toList());
+        List<Commit> allCommits = commitRepository.findByProjectId(projectId);
+        List<JiraIssue> allIssues = jiraIssueRepository.findByProjectId(projectId);
+        List<Connection> connections = connectionRepository.findByProjectId(projectId);
 
-        // Apply low-contribution flag after normalisation
-        double avg = computed.stream()
-                .mapToDouble(ContributionMetric::getContributionScore)
-                .average()
-                .orElse(0.0);
-        computed.forEach(m -> m.setHasLowContribution(
-                m.getContributionScore() < avg * MetricsCalculator.LOW_CONTRIBUTION_RATIO));
+        // Compute V2 metrics
+        List<ContributionMetric> computed = calculator.calculate(
+                projectId, memberUserIds, allCommits, allIssues, connections);
 
         // Upsert
-        for (ContributionMetric computed1 : computed) {
-            metricRepo.findByProjectIdAndUserId(projectId, computed1.getUserId())
+        for (ContributionMetric metric : computed) {
+            metricRepo.findByProjectIdAndUserId(projectId, metric.getUserId())
                     .ifPresentOrElse(
-                            existing -> copyFields(existing, computed1),
-                            () -> metricRepo.save(computed1));
+                            existing -> copyFields(existing, metric),
+                            () -> metricRepo.save(metric));
         }
         metricRepo.flush();
 
@@ -258,24 +251,21 @@ public class ContributionService {
         target.setTotalCommits(src.getTotalCommits());
         target.setLinesAdded(src.getLinesAdded());
         target.setLinesDeleted(src.getLinesDeleted());
-        target.setBugFixCommits(src.getBugFixCommits());
+        target.setWeightedLinesAdded(src.getWeightedLinesAdded());
+        target.setCodeScore(src.getCodeScore());
+        target.setTaskScore(src.getTaskScore());
+        target.setConsistencyScore(src.getConsistencyScore());
         target.setActiveDays(src.getActiveDays());
-        target.setConsistencyFactor(src.getConsistencyFactor());
-        target.setCodeChurnRate(src.getCodeChurnRate());
+        target.setOverdueTaskCount(src.getOverdueTaskCount());
+        target.setRole(src.getRole());
         target.setTasksAssigned(src.getTasksAssigned());
         target.setTasksCompleted(src.getTasksCompleted());
         target.setTasksInProgress(src.getTasksInProgress());
         target.setTaskCompletionRate(src.getTaskCompletionRate());
-        target.setOverdueTaskCount(src.getOverdueTaskCount());
-        target.setDomain(src.getDomain());
-        target.setSmartCoderBonus(src.getSmartCoderBonus());
-        target.setGithubImpactScore(src.getGithubImpactScore());
-        target.setJiraExecutionScore(src.getJiraExecutionScore());
         target.setContributionScore(src.getContributionScore());
         target.setLastActivityDate(src.getLastActivityDate());
         target.setInactive(src.getInactive());
         target.setHasLowContribution(src.getHasLowContribution());
-        target.setHasOverdueTasks(src.getHasOverdueTasks());
         target.setUpdatedAt(Instant.now());
         target.setCalculatedAt(Instant.now());
         metricRepo.save(target);
@@ -296,23 +286,20 @@ public class ContributionService {
                 .totalCommits(m.getTotalCommits()        != null ? m.getTotalCommits()        : 0)
                 .linesAdded(m.getLinesAdded()            != null ? m.getLinesAdded()            : 0)
                 .linesDeleted(m.getLinesDeleted()        != null ? m.getLinesDeleted()        : 0)
-                .bugFixCommits(m.getBugFixCommits()      != null ? m.getBugFixCommits()      : 0)
-                .githubImpactScore(m.getGithubImpactScore() != null ? m.getGithubImpactScore() : 0.0)
-                .activeDays(m.getActiveDays()            != null ? m.getActiveDays()            : 0)
-                .consistencyFactor(m.getConsistencyFactor() != null ? m.getConsistencyFactor() : 1.0)
+                .weightedLinesAdded(m.getWeightedLinesAdded() != null ? m.getWeightedLinesAdded() : 0.0)
+                .codeScore(m.getCodeScore()              != null ? m.getCodeScore()              : 0.0)
+                .taskScore(m.getTaskScore()              != null ? m.getTaskScore()              : 0.0)
+                .consistencyScore(m.getConsistencyScore()!= null ? m.getConsistencyScore()       : 0.0)
+                .activeDays(m.getActiveDays()            != null ? m.getActiveDays()             : 0)
+                .overdueTaskCount(m.getOverdueTaskCount() != null ? m.getOverdueTaskCount()       : 0)
+                .role(m.getRole() != null ? m.getRole() : (user.getRole() != null ? user.getRole().name() : "MEMBER"))
                 .tasksAssigned(m.getTasksAssigned()      != null ? m.getTasksAssigned()      : 0)
                 .tasksCompleted(m.getTasksCompleted()    != null ? m.getTasksCompleted()    : 0)
                 .tasksInProgress(m.getTasksInProgress()  != null ? m.getTasksInProgress()  : 0)
                 .taskCompletionRate(m.getTaskCompletionRate() != null ? m.getTaskCompletionRate() : 0.0)
-                .overdueTaskCount(m.getOverdueTaskCount() != null ? m.getOverdueTaskCount() : 0)
-                .domain(m.getDomain())
-                .smartCoderBonus(m.getSmartCoderBonus()  != null ? m.getSmartCoderBonus()  : 1.0)
-                .jiraExecutionScore(m.getJiraExecutionScore() != null ? m.getJiraExecutionScore() : 0.0)
-                .codeChurnRate(m.getCodeChurnRate()      != null ? m.getCodeChurnRate()      : 0.0)
                 .contributionScore(m.getContributionScore() != null ? m.getContributionScore() : 0.0)
                 .inactive(Boolean.TRUE.equals(m.getInactive()))
                 .hasLowContribution(Boolean.TRUE.equals(m.getHasLowContribution()))
-                .hasOverdueTasks(Boolean.TRUE.equals(m.getHasOverdueTasks()))
                 .lastActivityDate(m.getLastActivityDate())
                 .calculatedAt(m.getCalculatedAt())
                 .build();
@@ -341,16 +328,8 @@ public class ContributionService {
                         + MetricsCalculator.INACTIVE_DAYS_THRESHOLD + " days");
             if (m.isHasLowContribution())
                 addIssue(issues, m, "LOW_CONTRIBUTION",
-                        m.getFullName() + " score (" + m.getContributionScore()
+                        m.getFullName() + " score (" + String.format("%.2f", m.getContributionScore())
                         + ") is below 20% of project average");
-            if (m.isHasOverdueTasks())
-                addIssue(issues, m, "OVERDUE_TASKS",
-                        m.getFullName() + " has Jira tasks past their due date");
-            if (m.getCodeChurnRate() > MetricsCalculator.HIGH_CHURN_THRESHOLD)
-                addIssue(issues, m, "HIGH_CHURN",
-                        m.getFullName() + " code churn rate "
-                        + String.format("%.2f", m.getCodeChurnRate())
-                        + " (deleted > added — possible low-quality code)");
         }
         return issues;
     }

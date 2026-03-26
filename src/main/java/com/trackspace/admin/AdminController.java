@@ -61,7 +61,7 @@ public class AdminController {
     @PatchMapping("/users/{userId}/status")
     @Operation(summary = "Update user status", description = "Admin activates or deactivates a user account")
     public ResponseEntity<ApiResponse<UserResponse>> updateUserStatus(
-            @PathVariable Long userId,
+            @PathVariable("userId") Long userId,
             @Valid @RequestBody UpdateUserStatusRequest request) {
         UserResponse response = adminService.updateUserStatus(userId, request.getActive());
         return ResponseEntity.ok(
@@ -75,7 +75,7 @@ public class AdminController {
     @PutMapping("/users/{userId}")
     @Operation(summary = "Update user", description = "Admin updates user information")
     public ResponseEntity<ApiResponse<UserResponse>> updateUser(
-            @PathVariable Long userId,
+            @PathVariable("userId") Long userId,
             @Valid @RequestBody UpdateUserRequest request) {
         UserResponse response = adminService.updateUser(userId, request);
         return ResponseEntity.ok(
@@ -88,7 +88,7 @@ public class AdminController {
      */
     @DeleteMapping("/users/{userId}")
     @Operation(summary = "Delete user", description = "Admin deletes a user account")
-    public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable Long userId) {
+    public ResponseEntity<ApiResponse<Void>> deleteUser(@PathVariable("userId") Long userId) {
         adminService.deleteUser(userId);
         return ResponseEntity.ok(
                 ApiResponse.success("Xóa người dùng thành công", null)

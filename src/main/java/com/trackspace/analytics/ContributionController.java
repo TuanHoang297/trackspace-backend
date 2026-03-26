@@ -40,32 +40,25 @@ public class ContributionController {
     // ─────────────────────────────────────────────────────────────────────────
 
     @Operation(
-            summary = "Recalculate contributions for a project",
+            summary = "Recalculate contributions for a project (V2)",
             description = """
-                    Triggers a full recalculation of the Impact & Consistency Score for every
+                    Triggers a full recalculation of the contribution score for every
                     member of the project.  Persists results to the database.
 
-                    Score formula:
-                    - **GitHub Impact (50%)**: Σ log₁₀(linesAdded) × bugMultiplier × fileWeight,
-                      multiplied by consistency factor (active days).
-                      Scores are normalised within FRONTEND / BACKEND domain groups
-                      (controlled by `feWeight` / `beWeight` query params, default 0.5 / 0.5).
-                    - **Jira Execution (50%)**: tasksCompleted / tasksAssigned × qualityFactor
-                      × SmartCoderBonus — penalised by rework count.
-                    - **Final**: 0.5 × githubImpactScore + 0.5 × jiraExecutionScore (0–100).
+                    V2 Score formula:
+                    - **Code Score (40%)**: Per-file weighted lines added (Logic=1.0, UI=0.5, Config=0.1),
+                      normalized against group maximum.
+                    - **Task Score (40%)**: tasksCompleted / tasksAssigned (Jira).
+                    - **Consistency Score (20%)**: activeDays / (projectWeeks × 3),
+                      based on 3 active days/week expectation.
                     """
     )
     @PostMapping("/recalculate/{projectId}")
     public ResponseEntity<ApiResponse<List<ContributionResponse>>> recalculate(
-            @Parameter(description = "Project ID") @PathVariable Integer projectId,
-            @Parameter(description = "FRONTEND repo weight (0–1, default 0.5)")
-            @RequestParam(defaultValue = "0.5") Double feWeight,
-            @Parameter(description = "BACKEND repo weight (0–1, default 0.5)")
-            @RequestParam(defaultValue = "0.5") Double beWeight) {
+            @Parameter(description = "Project ID") @PathVariable("projectId") Integer projectId) {
         contributionService.checkProjectAccess(projectId);
-        log.info("Recalculating contributions for project {} (feWeight={}, beWeight={})",
-                projectId, feWeight, beWeight);
-        List<ContributionResponse> result = contributionService.recalculate(projectId, feWeight, beWeight);
+        log.info("Recalculating V2 contributions for project {}", projectId);
+        List<ContributionResponse> result = contributionService.recalculate(projectId);
         return ResponseEntity.ok(ApiResponse.success("Recalculation complete", result));
     }
 
@@ -80,7 +73,7 @@ public class ContributionController {
     )
     @GetMapping("/contributions/project/{projectId}")
     public ResponseEntity<ApiResponse<List<ContributionResponse>>> getByProject(
-            @PathVariable Integer projectId) {
+            @PathVariable("projectId") Integer projectId) {
         contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(contributionService.getByProject(projectId)));
     }
@@ -91,9 +84,9 @@ public class ContributionController {
     )
     @GetMapping("/contributions/user/{userId}")
     public ResponseEntity<ApiResponse<ContributionResponse>> getByUser(
-            @Parameter(description = "User ID") @PathVariable Long userId,
+            @Parameter(description = "User ID") @PathVariable("userId") Long userId,
             @Parameter(description = "Project ID", required = true)
-            @RequestParam Integer projectId) {
+            @RequestParam("projectId") Integer projectId) {
         return ResponseEntity.ok(ApiResponse.success(
                 contributionService.getByUser(projectId, userId)));
     }
@@ -112,7 +105,7 @@ public class ContributionController {
     )
     @GetMapping("/dashboard/{projectId}")
     public ResponseEntity<ApiResponse<DashboardResponse>> getDashboard(
-            @PathVariable Integer projectId) {
+            @PathVariable("projectId") Integer projectId) {
         contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(contributionService.getDashboard(projectId)));
     }
@@ -130,9 +123,9 @@ public class ContributionController {
     )
     @GetMapping("/heatmap/{userId}")
     public ResponseEntity<ApiResponse<HeatmapResponse>> getHeatmap(
-            @Parameter(description = "User ID") @PathVariable Long userId,
+            @Parameter(description = "User ID") @PathVariable("userId") Long userId,
             @Parameter(description = "Project ID", required = true)
-            @RequestParam Integer projectId) {
+            @RequestParam("projectId") Integer projectId) {
         return ResponseEntity.ok(ApiResponse.success(
                 contributionService.getHeatmap(projectId, userId)));
     }
@@ -154,7 +147,7 @@ public class ContributionController {
     )
     @GetMapping("/issues/{projectId}")
     public ResponseEntity<ApiResponse<IssueDetectionResponse>> detectIssues(
-            @PathVariable Integer projectId) {
+            @PathVariable("projectId") Integer projectId) {
         contributionService.checkProjectAccess(projectId);
         return ResponseEntity.ok(ApiResponse.success(
                 contributionService.detectIssues(projectId)));

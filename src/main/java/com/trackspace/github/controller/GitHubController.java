@@ -123,7 +123,7 @@ public class GitHubController {
   })
   @GetMapping("/status/{projectId}")
   public ResponseEntity<ApiResponse<ConnectionStatusResponse>> getConnectionStatus(
-      @Parameter(description = "ID of the project to check connection for", required = true, example = "42") @PathVariable Integer projectId) {
+      @Parameter(description = "ID of the project to check connection for", required = true, example = "42") @PathVariable("projectId") Integer projectId) {
 
     log.debug("GET /api/v1/github/status/{}", projectId);
     ConnectionStatusResponse response = connectionService.getConnectionStatus(projectId);
@@ -137,7 +137,7 @@ public class GitHubController {
   @Operation(summary = "Get all connections", description = "Returns all GitHub connections for a project, supporting multiple repositories (FE + BE).")
   @GetMapping("/connections/{projectId}")
   public ResponseEntity<ApiResponse<List<ConnectionStatusResponse>>> getConnections(
-      @Parameter(description = "ID of the project", required = true) @PathVariable Integer projectId) {
+      @Parameter(description = "ID of the project", required = true) @PathVariable("projectId") Integer projectId) {
 
     log.debug("GET /api/v1/github/connections/{}", projectId);
     List<ConnectionStatusResponse> connections = connectionService.getConnections(projectId);
@@ -155,7 +155,7 @@ public class GitHubController {
   })
   @DeleteMapping("/disconnect/{projectId}")
   public ResponseEntity<ApiResponse<Void>> disconnectRepository(
-      @Parameter(description = "ID of the project to disconnect", required = true, example = "42") @PathVariable Integer projectId) {
+      @Parameter(description = "ID of the project to disconnect", required = true, example = "42") @PathVariable("projectId") Integer projectId) {
 
     log.info("DELETE /api/v1/github/disconnect/{}", projectId);
     connectionService.disconnectRepository(projectId);
@@ -169,7 +169,7 @@ public class GitHubController {
   @Operation(summary = "Disconnect single GitHub repository", description = "Disconnects a single GitHub repository by connection ID. Only affects the specified connection, other repos remain connected.")
   @DeleteMapping("/disconnect/connection/{connectionId}")
   public ResponseEntity<ApiResponse<Void>> disconnectSingleRepository(
-      @Parameter(description = "ID of the connection to disconnect", required = true) @PathVariable Integer connectionId) {
+      @Parameter(description = "ID of the connection to disconnect", required = true) @PathVariable("connectionId") Integer connectionId) {
 
     log.info("DELETE /api/v1/github/disconnect/connection/{}", connectionId);
     connectionService.disconnectSingleRepository(connectionId);
@@ -254,7 +254,7 @@ public class GitHubController {
   })
   @GetMapping("/commits/{projectId}")
   public ResponseEntity<ApiResponse<List<CommitResponse>>> getCommits(
-      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable Integer projectId,
+      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable("projectId") Integer projectId,
 
       @Parameter(description = "Filter by connection ID (optional) — scopes to a single repo") @RequestParam(required = false) Integer connectionId,
 
@@ -282,9 +282,9 @@ public class GitHubController {
   @Operation(summary = "Get commits by branch (real-time from GitHub)")
   @GetMapping("/commits/{projectId}/by-branch")
   public ResponseEntity<ApiResponse<List<CommitResponse>>> getCommitsByBranch(
-      @PathVariable Integer projectId,
-      @RequestParam Integer connectionId,
-      @RequestParam String branch) {
+      @PathVariable("projectId") Integer projectId,
+      @RequestParam("connectionId") Integer connectionId,
+      @RequestParam("branch") String branch) {
     List<CommitResponse> commits = commitService.getCommitsByBranch(projectId, connectionId, branch);
     return ResponseEntity.ok(ApiResponse.success(commits));
   }
@@ -319,7 +319,7 @@ public class GitHubController {
   })
   @GetMapping("/stats/{projectId}")
   public ResponseEntity<ApiResponse<List<StatsResponse>>> getStats(
-      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable Integer projectId,
+      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable("projectId") Integer projectId,
 
       @Parameter(description = "Filter by connection ID — scopes to a single repo") @RequestParam(required = false) Integer connectionId,
 
@@ -339,7 +339,7 @@ public class GitHubController {
   @Operation(summary = "Get branches", description = "Returns all branches from the connected GitHub repository for the given project.")
   @GetMapping("/branches/{projectId}")
   public ResponseEntity<ApiResponse<List<BranchResponse>>> getBranches(
-      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable Integer projectId,
+      @Parameter(description = "ID of the project", required = true, example = "42") @PathVariable("projectId") Integer projectId,
       @Parameter(description = "Filter by connection ID — scopes to a single repo") @RequestParam(required = false) Integer connectionId) {
 
     // Get connection entity (has token + URL)

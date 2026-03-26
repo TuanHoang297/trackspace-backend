@@ -40,7 +40,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Create project for a group", description = "Creates one project for the group. Each group can only have one project.")
     public ResponseEntity<ApiResponse<ProjectResponse>> createProject(
-            @PathVariable Long groupId,
+            @PathVariable("groupId") Long groupId,
             @Valid @RequestBody CreateProjectRequest request) {
         User currentUser = authService.getCurrentUser();
         ProjectResponse response = projectService.createProject(groupId, request, currentUser);
@@ -52,7 +52,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project by group")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectByGroup(
-            @PathVariable Long groupId) {
+            @PathVariable("groupId") Long groupId) {
         return ResponseEntity.ok(
                 ApiResponse.success(projectService.getProjectByGroup(groupId)));
     }
@@ -61,7 +61,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project by ID")
     public ResponseEntity<ApiResponse<ProjectResponse>> getProjectById(
-            @PathVariable Long projectId) {
+            @PathVariable("projectId") Long projectId) {
         return ResponseEntity.ok(
                 ApiResponse.success(projectService.getProjectById(projectId)));
     }
@@ -70,7 +70,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Get all projects in a class", description = "Admin or Lecturer can view all projects within a class.")
     public ResponseEntity<ApiResponse<List<ProjectResponse>>> getProjectsByClass(
-            @PathVariable Long classId) {
+            @PathVariable("classId") Long classId) {
         return ResponseEntity.ok(
                 ApiResponse.success(projectService.getProjectsByClass(classId)));
     }
@@ -79,7 +79,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Update project name")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
-            @PathVariable Long projectId,
+            @PathVariable("projectId") Long projectId,
             @Valid @RequestBody UpdateProjectRequest request) {
         User currentUser = authService.getCurrentUser();
         return ResponseEntity.ok(
@@ -91,7 +91,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Delete (soft-delete) project")
     public ResponseEntity<ApiResponse<Void>> deleteProject(
-            @PathVariable Long projectId) {
+            @PathVariable("projectId") Long projectId) {
         User currentUser = authService.getCurrentUser();
         projectService.deleteProject(projectId, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Xóa project thành công", null));
@@ -104,7 +104,7 @@ public class ProjectController {
     @Operation(summary = "Create or update project info",
             description = "Upsert: creates info if not exists, updates if already exists. Used to fill in data for SRS generation.")
     public ResponseEntity<ApiResponse<ProjectInfoResponse>> saveProjectInfo(
-            @PathVariable Long projectId,
+            @PathVariable("projectId") Long projectId,
             @RequestBody ProjectInfoRequest request) {
         User currentUser = authService.getCurrentUser();
         ProjectInfoResponse response = projectService.saveProjectInfo(projectId, request, currentUser);
@@ -115,7 +115,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get project info")
     public ResponseEntity<ApiResponse<ProjectInfoResponse>> getProjectInfo(
-            @PathVariable Long projectId) {
+            @PathVariable("projectId") Long projectId) {
         return ResponseEntity.ok(
                 ApiResponse.success(projectService.getProjectInfo(projectId)));
     }
@@ -124,7 +124,7 @@ public class ProjectController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Delete project info")
     public ResponseEntity<ApiResponse<Void>> deleteProjectInfo(
-            @PathVariable Long projectId) {
+            @PathVariable("projectId") Long projectId) {
         User currentUser = authService.getCurrentUser();
         projectService.deleteProjectInfo(projectId, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Xóa thông tin project thành công", null));

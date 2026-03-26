@@ -27,9 +27,6 @@ public interface ContributionMetricRepository extends JpaRepository<Contribution
     /** Members with low contribution score */
     List<ContributionMetric> findByProjectIdAndHasLowContributionTrue(Integer projectId);
 
-    /** Members with overdue tasks */
-    List<ContributionMetric> findByProjectIdAndHasOverdueTasksTrue(Integer projectId);
-
     @Query("SELECT AVG(cm.contributionScore) FROM ContributionMetric cm WHERE cm.projectId = :projectId")
     Double avgScoreByProjectId(@Param("projectId") Integer projectId);
 

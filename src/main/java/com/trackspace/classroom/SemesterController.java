@@ -50,7 +50,7 @@ public class SemesterController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update semester (Admin only)")
     public ResponseEntity<ApiResponse<SemesterResponse>> updateSemester(
-            @PathVariable Long id, @Valid @RequestBody SemesterRequest request) {
+            @PathVariable("id") Long id, @Valid @RequestBody SemesterRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Cập nhật học kỳ thành công",
                 semesterService.updateSemester(id, request)));
     }
@@ -58,7 +58,7 @@ public class SemesterController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete semester (Admin only)")
-    public ResponseEntity<ApiResponse<Void>> deleteSemester(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteSemester(@PathVariable("id") Long id) {
         semesterService.deleteSemester(id);
         return ResponseEntity.ok(ApiResponse.success("Xóa học kỳ thành công", null));
     }

@@ -11,6 +11,7 @@ import com.trackspace.github.repository.ConnectionRepository;
 import com.trackspace.github.service.CommitService;
 import com.trackspace.github.service.GitHubApiClient;
 import com.trackspace.github.service.GitHubApiClient.GitHubCommitDto;
+import com.trackspace.analytics.MetricsCalculator;
 import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -822,18 +823,26 @@ public class CommitServiceImpl implements CommitService {
             // No per-file data — fall back to total stats
             commit.setLinesAddedCode(commit.getLinesAdded());
             commit.setLinesDeletedCode(commit.getLinesDeleted());
+            // Weighted = raw added * default weight (no per-file info available)
+            int raw = commit.getLinesAdded() != null ? commit.getLinesAdded() : 0;
+            commit.setWeightedLinesAdded(raw * MetricsCalculator.DEFAULT_FILE_WEIGHT);
             return;
         }
 
         int addedCode = 0;
         int deletedCode = 0;
+        double weightedAdded = 0.0;
         for (GitHubApiClient.GitHubCommitDetailDto.FileChange f : files) {
             if (!isLibraryFile(f.getFilename())) {
-                addedCode   += f.getAdditions() != null ? f.getAdditions() : 0;
-                deletedCode += f.getDeletions() != null ? f.getDeletions() : 0;
+                int additions = f.getAdditions() != null ? f.getAdditions() : 0;
+                int deletions = f.getDeletions() != null ? f.getDeletions() : 0;
+                addedCode   += additions;
+                deletedCode += deletions;
+                weightedAdded += additions * MetricsCalculator.getFileWeight(f.getFilename());
             }
         }
         commit.setLinesAddedCode(addedCode);
         commit.setLinesDeletedCode(deletedCode);
+        commit.setWeightedLinesAdded(weightedAdded);
     }
 }

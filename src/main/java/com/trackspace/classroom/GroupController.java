@@ -32,7 +32,7 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Create group", description = "Lecturer creates a new student group within a class")
     public ResponseEntity<ApiResponse<GroupResponse>> createGroup(
-            @PathVariable Long classId,
+            @PathVariable("classId") Long classId,
             @Valid @RequestBody CreateGroupRequest request) {
         GroupResponse response = groupService.createGroup(classId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -44,7 +44,7 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Get all groups in class", description = "Get overview of all groups assigned within a class")
     public ResponseEntity<ApiResponse<List<GroupResponse>>> getAllGroups(
-            @PathVariable Long classId) {
+            @PathVariable("classId") Long classId) {
         List<GroupResponse> groups = groupService.getAllGroupsByClass(classId);
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy danh sách nhóm thành công", groups)
@@ -55,8 +55,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Get group by ID", description = "Get detailed information of a specific group")
     public ResponseEntity<ApiResponse<GroupResponse>> getGroupById(
-            @PathVariable Long classId,
-            @PathVariable Long groupId) {
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId) {
         GroupResponse response = groupService.getGroupById(classId, groupId);
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy thông tin nhóm thành công", response)
@@ -67,8 +67,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Update group", description = "Lecturer updates group name or description")
     public ResponseEntity<ApiResponse<GroupResponse>> updateGroup(
-            @PathVariable Long classId,
-            @PathVariable Long groupId,
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId,
             @Valid @RequestBody UpdateGroupRequest request) {
         GroupResponse response = groupService.updateGroup(classId, groupId, request);
         return ResponseEntity.ok(
@@ -80,8 +80,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Delete group", description = "Lecturer soft-deletes a group")
     public ResponseEntity<ApiResponse<Void>> deleteGroup(
-            @PathVariable Long classId,
-            @PathVariable Long groupId) {
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId) {
         groupService.deleteGroup(classId, groupId);
         return ResponseEntity.ok(
                 ApiResponse.success("Xóa nhóm thành công", null)
@@ -94,8 +94,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Assign team leader", description = "Student must be a member of the group.")
     public ResponseEntity<ApiResponse<GroupResponse>> assignLeader(
-            @PathVariable Long classId,
-            @PathVariable Long groupId,
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId,
             @Valid @RequestBody AssignLeaderRequest request) {
         GroupResponse response = groupService.assignLeader(classId, groupId, request.getStudentId());
         return ResponseEntity.ok(
@@ -109,8 +109,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
     @Operation(summary = "Get group members", description = "Get list of all members in a group")
     public ResponseEntity<ApiResponse<List<GroupMemberResponse>>> getGroupMembers(
-            @PathVariable Long classId,
-            @PathVariable Long groupId) {
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId) {
         List<GroupMemberResponse> members = groupService.getGroupMembers(classId, groupId);
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy danh sách thành viên nhóm thành công", members)
@@ -121,8 +121,8 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Add member to group", description = "Student must be enrolled in the class and not already in another group.")
     public ResponseEntity<ApiResponse<GroupMemberResponse>> addMember(
-            @PathVariable Long classId,
-            @PathVariable Long groupId,
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId,
             @Valid @RequestBody AddGroupMemberRequest request) {
         GroupMemberResponse response = groupService.addMember(classId, groupId, request.getStudentId());
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -134,9 +134,9 @@ public class GroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Remove member from group", description = "Lecturer removes a student from a group")
     public ResponseEntity<ApiResponse<Void>> removeMember(
-            @PathVariable Long classId,
-            @PathVariable Long groupId,
-            @PathVariable Long studentId) {
+            @PathVariable("classId") Long classId,
+            @PathVariable("groupId") Long groupId,
+            @PathVariable("studentId") Long studentId) {
         groupService.removeMember(classId, groupId, studentId);
         return ResponseEntity.ok(
                 ApiResponse.success("Xóa thành viên khỏi nhóm thành công", null)

@@ -51,7 +51,7 @@ public class SubjectController {
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update subject")
     public ResponseEntity<ApiResponse<SubjectResponse>> updateSubject(
-            @PathVariable Long id, @Valid @RequestBody SubjectRequest request) {
+            @PathVariable("id") Long id, @Valid @RequestBody SubjectRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Cập nhật môn học thành công",
                 subjectService.updateSubject(id, request)));
     }
@@ -59,7 +59,7 @@ public class SubjectController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete subject (soft delete)")
-    public ResponseEntity<ApiResponse<Void>> deleteSubject(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteSubject(@PathVariable("id") Long id) {
         subjectService.deleteSubject(id);
         return ResponseEntity.ok(ApiResponse.success("Xóa môn học thành công", null));
     }

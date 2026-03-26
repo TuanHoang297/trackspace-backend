@@ -54,7 +54,7 @@ public class ClassController {
         @GetMapping("/{classId}")
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Get class by ID", description = "Get detailed information of a specific class")
-        public ResponseEntity<ApiResponse<ClassResponse>> getClassById(@PathVariable Long classId) {
+        public ResponseEntity<ApiResponse<ClassResponse>> getClassById(@PathVariable("classId") Long classId) {
                 ClassResponse response = classService.getClassById(classId);
                 return ResponseEntity.ok(
                                 ApiResponse.success("Lấy thông tin lớp học thành công", response));
@@ -64,7 +64,7 @@ public class ClassController {
         @PreAuthorize("hasRole('ADMIN')")
         @Operation(summary = "Update class", description = "Admin updates class name, semester, active status, or lecturer assignment")
         public ResponseEntity<ApiResponse<ClassResponse>> updateClass(
-                        @PathVariable Long classId,
+                        @PathVariable("classId") Long classId,
                         @Valid @RequestBody UpdateClassRequest request) {
                 ClassResponse response = classService.updateClass(classId, request);
                 return ResponseEntity.ok(
@@ -75,7 +75,7 @@ public class ClassController {
         @PreAuthorize("hasRole('ADMIN')")
         @Operation(summary = "Assign lecturer to class", description = "Admin assigns or changes the lecturer for a class")
         public ResponseEntity<ApiResponse<ClassResponse>> assignLecturer(
-                        @PathVariable Long classId,
+                        @PathVariable("classId") Long classId,
                         @RequestBody AssignLecturerRequest request) {
                 ClassResponse response = classService.assignLecturer(classId, request.getLecturerId());
                 return ResponseEntity.ok(
@@ -85,7 +85,7 @@ public class ClassController {
         @DeleteMapping("/{classId}")
         @PreAuthorize("hasRole('ADMIN')")
         @Operation(summary = "Delete class", description = "Admin soft-deletes a class (sets active = false)")
-        public ResponseEntity<ApiResponse<Void>> deleteClass(@PathVariable Long classId) {
+        public ResponseEntity<ApiResponse<Void>> deleteClass(@PathVariable("classId") Long classId) {
                 classService.deleteClass(classId);
                 return ResponseEntity.ok(
                                 ApiResponse.success("Xóa lớp học thành công", null));
@@ -105,7 +105,7 @@ public class ClassController {
     @GetMapping("/{classId}/enrolled-student-ids")
     @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
     @Operation(summary = "Get enrolled student IDs by subject+semester", description = "Get student IDs enrolled in classes with same subject and semester as given class")
-    public ResponseEntity<ApiResponse<List<Long>>> getEnrolledStudentIdsByClass(@PathVariable Long classId) {
+    public ResponseEntity<ApiResponse<List<Long>>> getEnrolledStudentIdsByClass(@PathVariable("classId") Long classId) {
         List<Long> ids = classService.getEnrolledStudentIdsByClass(classId);
         return ResponseEntity.ok(
                 ApiResponse.success("Lấy danh sách ID sinh viên đã đăng ký thành công", ids));
@@ -115,7 +115,7 @@ public class ClassController {
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Get students in class", description = "Get list of students enrolled in a specific class")
         public ResponseEntity<ApiResponse<List<StudentInClassResponse>>> getStudentsByClass(
-                        @PathVariable Long classId) {
+                        @PathVariable("classId") Long classId) {
                 List<StudentInClassResponse> students = classService.getStudentsByClassId(classId);
                 return ResponseEntity.ok(
                                 ApiResponse.success("Lấy danh sách sinh viên thành công", students));
@@ -125,7 +125,7 @@ public class ClassController {
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Add student to class", description = "Add a STUDENT to a class")
         public ResponseEntity<ApiResponse<StudentInClassResponse>> addStudentToClass(
-                        @PathVariable Long classId,
+                        @PathVariable("classId") Long classId,
                         @Valid @RequestBody AddStudentRequest request) {
                 StudentInClassResponse response = classService.addStudentToClass(classId, request.getStudentId());
                 return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -136,8 +136,8 @@ public class ClassController {
         @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER')")
         @Operation(summary = "Remove student from class", description = "Remove a student from a class")
         public ResponseEntity<ApiResponse<Void>> removeStudentFromClass(
-                        @PathVariable Long classId,
-                        @PathVariable Long studentId) {
+                        @PathVariable("classId") Long classId,
+                        @PathVariable("studentId") Long studentId) {
                 classService.removeStudentFromClass(classId, studentId);
                 return ResponseEntity.ok(
                                 ApiResponse.success("Xóa sinh viên khỏi lớp thành công", null));

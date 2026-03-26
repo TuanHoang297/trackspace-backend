@@ -16,13 +16,13 @@ public class SyncController {
     private final ScheduledSyncService scheduledSyncService;
 
     @PostMapping("/heartbeat/{projectId}")
-    public ResponseEntity<Void> heartbeat(@PathVariable Integer projectId) {
+    public ResponseEntity<Void> heartbeat(@PathVariable("projectId") Integer projectId) {
         scheduledSyncService.heartbeat(projectId);
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/deactivate/{projectId}")
-    public ResponseEntity<Void> deactivate(@PathVariable Integer projectId) {
+    public ResponseEntity<Void> deactivate(@PathVariable("projectId") Integer projectId) {
         scheduledSyncService.deactivate(projectId);
         return ResponseEntity.ok().build();
     }

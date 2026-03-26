@@ -34,7 +34,7 @@ public class SrsVisionController {
     @Operation(summary = "Analyze image and generate SRS text",
             description = "Send a diagram/mockup image and receive structured SRS text. Types: usecase, screenflow, db_schema, mockup.")
     public ResponseEntity<ApiResponse<String>> describeImage(
-            @PathVariable Long projectId,
+            @PathVariable("projectId") Long projectId,
             @Valid @RequestBody SrsVisionRequest request) {
 
         // Get project context for better AI results

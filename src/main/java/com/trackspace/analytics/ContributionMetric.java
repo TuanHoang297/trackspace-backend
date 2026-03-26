@@ -71,65 +71,38 @@ public class ContributionMetric {
     @Column(name = "lines_deleted")
     private Integer linesDeleted = 0;
 
-    // ── Advanced Scoring (added via ddl-auto=update) ──
-
-    /** GitHub Impact Score (0–100): Log10 + bug multiplier, normalized */
     @Builder.Default
-    @Column(name = "github_impact_score")
-    private Double githubImpactScore = 0.0;
+    @Column(name = "weighted_lines_added")
+    private Double weightedLinesAdded = 0.0;
 
-    /** Jira Execution Score (0–100): completion rate * quality factor */
-    @Builder.Default
-    @Column(name = "jira_execution_score")
-    private Double jiraExecutionScore = 0.0;
-
-    /** Consistency multiplier applied during calculation */
-    @Builder.Default
-    @Column(name = "consistency_factor")
-    private Double consistencyFactor = 1.0;
-
-    /** Days on which the user made at least one commit */
+    // ── Extra Metric Fields ──
     @Builder.Default
     @Column(name = "active_days")
     private Integer activeDays = 0;
 
-    /** Commits whose message indicates a bug-fix */
-    @Builder.Default
-    @Column(name = "bug_fix_commits")
-    private Integer bugFixCommits = 0;
-
-    /**
-     * Code churn rate: linesDeleted / (linesAdded + 1).
-     * High values flag potential "throw-away" or copied code.
-     */
-    @Builder.Default
-    @Column(name = "code_churn_rate")
-    private Double codeChurnRate = 0.0;
-
-    /** Number of tasks past their due date and not yet completed. */
     @Builder.Default
     @Column(name = "overdue_task_count")
     private Integer overdueTaskCount = 0;
 
-    // ── Domain & Smart Coder ──
+    @Column(name = "role")
+    private String role;
 
-    /**
-     * Primary domain derived from which GitHub repo the user commits most to.
-     * Values: "FRONTEND", "BACKEND", "BOTH", "UNKNOWN".
-     * GitHub score is normalised within this domain group.
-     */
-    @Builder.Default
-    @Column(name = "domain", length = 10)
-    private String domain = "UNKNOWN";
+    // ── V2 Scoring Pillars ──
 
-    /**
-     * Smart Coder Bonus multiplier applied to Jira Execution Score.
-     * Rewards members who close many tasks with compact, efficient code.
-     * Range [1.0, 1.5].
-     */
+    /** Code Score (0–100): Normalized weighted lines added */
     @Builder.Default
-    @Column(name = "smart_coder_bonus")
-    private Double smartCoderBonus = 1.0;
+    @Column(name = "code_score")
+    private Double codeScore = 0.0;
+
+    /** Task Score (0–100): Tasks completed / Assigned */
+    @Builder.Default
+    @Column(name = "task_score")
+    private Double taskScore = 0.0;
+
+    /** Consistency Score (0–100): Active days ratio */
+    @Builder.Default
+    @Column(name = "consistency_score")
+    private Double consistencyScore = 0.0;
 
     // ── Final Score ──
 
@@ -147,10 +120,6 @@ public class ContributionMetric {
     @Builder.Default
     @Column(name = "has_low_contribution")
     private Boolean hasLowContribution = false;
-
-    @Builder.Default
-    @Column(name = "has_overdue_tasks")
-    private Boolean hasOverdueTasks = false;
 
     @Column(name = "last_activity_date")
     private Instant lastActivityDate;

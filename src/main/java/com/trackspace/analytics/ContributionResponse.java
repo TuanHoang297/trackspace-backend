@@ -31,48 +31,28 @@ public class ContributionResponse {
     private int totalCommits;
     private int linesAdded;
     private int linesDeleted;
-    /** Commits identified as bug-fixes by message scanning */
-    private int bugFixCommits;
-    /** Normalized GitHub Impact Score 0–100 */
-    private double githubImpactScore;
+    // ── V2 Scoring Pillars ──
+    /** Code Score (0–100): Normalized weighted lines added */
+    private double codeScore;
 
-    // ── Consistency Pillar ──
-    /** Distinct calendar days with at least one commit */
+    /** Task Score (0–100): Tasks completed / Assigned */
+    private double taskScore;
+
+    /** Consistency Score (0–100): Active days ratio */
+    private double consistencyScore;
+
+    // ── Extra Metric Fields ──
     private int activeDays;
-    /** Multiplier applied on top of GitHub raw score */
-    private double consistencyFactor;
+    private double weightedLinesAdded;
+    private int overdueTaskCount;
+    private String role;
 
-    // ── Jira Pillar (50 %) ──
+    // ── Task Stats ──
     private int tasksAssigned;
     private int tasksCompleted;
     private int tasksInProgress;
     /** taskCompletionRate as percentage 0–100 */
     private double taskCompletionRate;
-    /** Number of tasks past their due date and not yet completed (penalty signal) */
-    private int overdueTaskCount;
-    /** Normalized Jira Execution Score 0–100 */
-    private double jiraExecutionScore;
-
-    // ── Code Churn ──
-    /**
-     * linesDeleted / (linesAdded + 1).
-     * High value means the user wrote code that was later heavily reworked.
-     */
-    private double codeChurnRate;
-
-    // ── Domain ──
-    /**
-     * Primary domain: "FRONTEND", "BACKEND", "BOTH", or "UNKNOWN".
-     * GitHub score is normalised only against members of the same domain,
-     * ensuring FE students compete with FE and BE students with BE.
-     */
-    private String domain;
-
-    /**
-     * Smart Coder Bonus [1.0, 1.5] applied to Jira Execution Score.
-     * Rewards efficient coders who close many tasks with compact code.
-     */
-    private double smartCoderBonus;
 
     // ── Final Score ──
     /** Overall score 0–100: 0.5 * githubImpactScore + 0.5 * jiraExecutionScore */
@@ -81,7 +61,6 @@ public class ContributionResponse {
     // ── Issue Detection Flags ──
     private boolean inactive;
     private boolean hasLowContribution;
-    private boolean hasOverdueTasks;
 
     private Instant lastActivityDate;
     private Instant calculatedAt;
