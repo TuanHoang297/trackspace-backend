@@ -42,7 +42,7 @@ public class AIPromptBuilder {
         sb.append("""
             {
                 "projectName": "string",
-                "locationDate": "string (format: '– Hanoi, <Month Year> –')",
+                "locationDate": "string (format: '– Ho Chi Minh, <Month Year> –')",
                 "introduction": {
                     "overview": "string (2-3 paragraphs about the project scope, goals, target users)",
                     "context": "string (background, motivation, problems the project solves)"

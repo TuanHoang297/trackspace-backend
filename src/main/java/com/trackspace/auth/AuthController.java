@@ -56,17 +56,34 @@ public class AuthController {
     @Operation(summary = "Get current user", description = "Get currently authenticated user information")
     public ResponseEntity<ApiResponse<UserInfo>> getCurrentUser() {
         User user = authService.getCurrentUser();
-        UserInfo userInfo = new UserInfo(
+        UserInfo userInfo = toUserInfo(user);
+        return ResponseEntity.ok(
+                ApiResponse.success("Lấy thông tin người dùng thành công", userInfo)
+        );
+    }
+
+        /**
+         * Update current user profile endpoint
+         * PUT /api/auth/profile
+         */
+        @PutMapping("/profile")
+        @Operation(summary = "Update current profile", description = "Update editable profile fields for currently authenticated user")
+        public ResponseEntity<ApiResponse<UserInfo>> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
+        User user = authService.updateProfile(request);
+        UserInfo userInfo = toUserInfo(user);
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật hồ sơ thành công", userInfo));
+        }
+
+    private UserInfo toUserInfo(User user) {
+        boolean hideStudentFields = user.getRole() == User.Role.ADMIN || user.getRole() == User.Role.LECTURER;
+        return new UserInfo(
                 user.getId(),
                 user.getEmail(),
                 user.getFullName(),
                 user.getRole(),
                 user.getActive(),
-                user.getGithubLogin()
-        );
-        return ResponseEntity.ok(
-                ApiResponse.success("Lấy thông tin người dùng thành công", userInfo)
-        );
+                hideStudentFields ? null : user.getGithubLogin(),
+                hideStudentFields ? null : user.getStudentCode());
     }
 
     /**
@@ -100,6 +117,7 @@ public class AuthController {
             String fullName,
             User.Role role,
             Boolean active,
-            String githubLogin
+            String githubLogin,
+            String studentCode
     ) {}
 }
