@@ -120,8 +120,37 @@ public class AuthService {
     @Transactional
     public void updateGithubLogin(String githubLogin) {
         User user = getCurrentUser();
+        if (user.getRole() == User.Role.ADMIN || user.getRole() == User.Role.LECTURER) {
+            user.setGithubLogin(null);
+            userRepository.save(user);
+            return;
+        }
         user.setGithubLogin(githubLogin != null ? githubLogin.trim() : null);
         userRepository.save(user);
+    }
+
+    /**
+     * Update editable profile fields for current user.
+     */
+    @Transactional
+    public User updateProfile(UpdateProfileRequest request) {
+        User user = getCurrentUser();
+
+        if (request.getFullName() == null || request.getFullName().trim().isEmpty()) {
+            throw new BadRequestException("Họ và tên không được để trống");
+        }
+
+        user.setFullName(request.getFullName().trim());
+        if (user.getRole() == User.Role.ADMIN || user.getRole() == User.Role.LECTURER) {
+            user.setStudentCode(null);
+            user.setGithubLogin(null);
+        } else {
+            user.setStudentCode(request.getStudentCode() != null && !request.getStudentCode().trim().isEmpty()
+                    ? request.getStudentCode().trim()
+                    : null);
+        }
+
+        return userRepository.save(user);
     }
 
     /**
