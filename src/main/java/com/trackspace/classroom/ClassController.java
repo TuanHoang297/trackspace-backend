@@ -91,6 +91,15 @@ public class ClassController {
                                 ApiResponse.success("Xóa lớp học thành công", null));
         }
 
+        @PutMapping("/{classId}/restore")
+        @PreAuthorize("hasRole('ADMIN')")
+        @Operation(summary = "Restore class", description = "Admin restores a soft-deleted class (sets active = true)")
+        public ResponseEntity<ApiResponse<Void>> restoreClass(@PathVariable("classId") Long classId) {
+                classService.restoreClass(classId);
+                return ResponseEntity.ok(
+                                ApiResponse.success("Khôi phục lớp học thành công", null));
+        }
+
         // ==================== Student Enrollment ====================
 
     @GetMapping("/enrolled-student-ids")

@@ -19,27 +19,31 @@ public interface ClassStudentRepository extends JpaRepository<ClassStudent, Clas
      * Find all class-student records for a given student
      */
 
-    List<ClassStudent> findByStudentId(Long studentId);
+    @Query("SELECT cs FROM ClassStudent cs WHERE cs.student.id = :studentId AND cs.classroom.active = true")
+    List<ClassStudent> findByStudentId(@Param("studentId") Long studentId);
 
     /**
      * Check if a student is already enrolled in a class
      */
-    boolean existsByClassroomIdAndStudentId(Long classId, Long studentId);
+    @Query("SELECT COUNT(cs) > 0 FROM ClassStudent cs WHERE cs.classroom.id = :classId AND cs.student.id = :studentId AND cs.classroom.active = true")
+    boolean existsByClassroomIdAndStudentId(@Param("classId") Long classId, @Param("studentId") Long studentId);
 
     /**
      * Find a specific class-student record
      */
-    Optional<ClassStudent> findByClassroomIdAndStudentId(Long classId, Long studentId);
+    @Query("SELECT cs FROM ClassStudent cs WHERE cs.classroom.id = :classId AND cs.student.id = :studentId AND cs.classroom.active = true")
+    Optional<ClassStudent> findByClassroomIdAndStudentId(@Param("classId") Long classId, @Param("studentId") Long studentId);
 
     /**
      * Count students in a class
      */
-    long countByClassroomId(Long classId);
+    @Query("SELECT COUNT(cs) FROM ClassStudent cs WHERE cs.classroom.id = :classId AND cs.classroom.active = true")
+    long countByClassroomId(@Param("classId") Long classId);
 
     /**
      * Find class-student with student info eager loaded
      */
-    @Query("SELECT cs FROM ClassStudent cs JOIN FETCH cs.student WHERE cs.classroom.id = :classId")
+    @Query("SELECT cs FROM ClassStudent cs JOIN FETCH cs.student WHERE cs.classroom.id = :classId AND cs.classroom.active = true")
     List<ClassStudent> findByClassIdWithStudent(@Param("classId") Long classId);
 
     /**
@@ -71,4 +75,22 @@ public interface ClassStudentRepository extends JpaRepository<ClassStudent, Clas
     List<Long> findStudentIdsBySubjectAndSemester(
             @Param("subjectId") Long subjectId,
             @Param("semesterId") Long semesterId);
+
+    /**
+     * Find students in a class who are already enrolled in another active class for a new subject and semester.
+     * Used when updating a class's subject or semester to prevent "1 subject per semester" violations.
+     */
+    @Query("SELECT s FROM ClassStudent cs JOIN cs.student s " +
+           "WHERE cs.classroom.id = :classId " +
+           "AND s.id IN (" +
+           "   SELECT cs2.student.id FROM ClassStudent cs2 " +
+           "   WHERE cs2.classroom.subject.id = :newSubjectId " +
+           "   AND cs2.classroom.semester.id = :newSemesterId " +
+           "   AND cs2.classroom.id != :classId " +
+           "   AND cs2.classroom.active = true" +
+           ")")
+    List<com.trackspace.user.User> findConflictingStudentsOnClassUpdate(
+            @Param("classId") Long classId,
+            @Param("newSubjectId") Long newSubjectId,
+            @Param("newSemesterId") Long newSemesterId);
 }

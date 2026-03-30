@@ -15,12 +15,15 @@ import java.util.Optional;
 @Repository
 public interface GroupRepository extends JpaRepository<Group, Long> {
 
-    List<Group> findByClassroomIdAndActiveTrue(Long classId);
+    @Query("SELECT g FROM Group g WHERE g.classroom.id = :classId AND g.active = true AND g.classroom.active = true")
+    List<Group> findByClassroomIdAndActiveTrue(@Param("classId") Long classId);
 
-    boolean existsByClassroomIdAndGroupNameAndActiveTrue(Long classId, String groupName);
+    @Query("SELECT COUNT(g) > 0 FROM Group g WHERE g.classroom.id = :classId AND g.groupName = :groupName AND g.active = true AND g.classroom.active = true")
+    boolean existsByClassroomIdAndGroupNameAndActiveTrue(@Param("classId") Long classId, @Param("groupName") String groupName);
 
-    Optional<Group> findByIdAndActiveTrue(Long groupId);
+    @Query("SELECT g FROM Group g WHERE g.id = :groupId AND g.active = true AND g.classroom.active = true")
+    Optional<Group> findByIdAndActiveTrue(@Param("groupId") Long groupId);
 
-    @Query("SELECT g FROM Group g LEFT JOIN FETCH g.teamLeader WHERE g.id = :id AND g.active = true")
+    @Query("SELECT g FROM Group g LEFT JOIN FETCH g.teamLeader WHERE g.id = :id AND g.active = true AND g.classroom.active = true")
     Optional<Group> findByIdWithLeader(@Param("id") Long id);
 }

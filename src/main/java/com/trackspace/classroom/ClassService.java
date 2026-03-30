@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-
+import java.util.stream.Collectors;
 /**
  * Class Service
  * Business logic for classroom management
@@ -117,6 +117,29 @@ public class ClassService {
     @Transactional
     public ClassResponse updateClass(Long classId, UpdateClassRequest request) {
         Class aClass = findActiveClassById(classId);
+
+        Long newSubjectId = request.getSubjectId() != null ? request.getSubjectId() : 
+                (aClass.getSubject() != null ? aClass.getSubject().getId() : null);
+        Long newSemesterId = request.getSemesterId() != null ? request.getSemesterId() : 
+                (aClass.getSemester() != null ? aClass.getSemester().getId() : null);
+
+        if (newSubjectId != null && newSemesterId != null) {
+            List<User> conflictingStudents = classStudentRepository.findConflictingStudentsOnClassUpdate(
+                    classId, newSubjectId, newSemesterId);
+
+            if (!conflictingStudents.isEmpty()) {
+                int maxDisplay = 3;
+                String names = conflictingStudents.stream()
+                        .limit(maxDisplay)
+                        .map(u -> u.getFullName() + " (" + u.getStudentCode() + ")")
+                        .collect(Collectors.joining(", "));
+                if (conflictingStudents.size() > maxDisplay) {
+                    names += " và " + (conflictingStudents.size() - maxDisplay) + " sinh viên khác";
+                }
+                throw new BadRequestException("Không thể thay đổi môn học/học kỳ. Các sinh viên sau đã đăng ký lớp khác với cùng môn và kỳ mới: " + names);
+            }
+        }
+
         applyUpdates(aClass, request);
         Class updated = classRepository.save(aClass);
         long studentCount = classStudentRepository.countByClassroomId(updated.getId());
@@ -147,6 +170,20 @@ public class ClassService {
     public void deleteClass(Long classId) {
         Class aClass = findActiveClassById(classId);
         aClass.setActive(false);
+        classRepository.save(aClass);
+    }
+
+    /**
+     * Restore a soft-deleted class (Admin only)
+     *
+     * @param classId Class ID
+     */
+    @Transactional
+    public void restoreClass(Long classId) {
+        Class aClass = classRepository.findById(classId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        String.format(CLASS_NOT_FOUND, classId)));
+        aClass.setActive(true);
         classRepository.save(aClass);
     }
 
