@@ -16,16 +16,16 @@ public class SrsExportService {
     public byte[] exportToDoc(String htmlContent, String title) {
         log.info("Exporting SRS to DOC (HTML-as-Word): {}", title);
 
-        // Replace <hr> with Word-compatible page breaks
         String processedHtml = htmlContent != null ? htmlContent : "";
-        processedHtml = processedHtml
-                .replaceAll("<hr\\s*/?>", "<br clear='all' style='mso-special-character:line-break;page-break-before:always'>");
 
         // Center images with data-align="center"
         processedHtml = processedHtml.replaceAll(
                 "data-align=\"center\"",
                 "data-align=\"center\" style=\"text-align:center\""
         );
+
+        // Build Word-compatible cover page layout
+        processedHtml = buildCoverPageLayout(processedHtml);
 
         String wordDoc = """
                 <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -59,6 +59,7 @@ public class SrsExportService {
                     font-size: 28pt;
                     font-weight: bold;
                     text-align: center;
+                    text-transform: uppercase;
                     margin-top: 20px;
                     margin-bottom: 8px;
                     color: #c00000;
@@ -158,13 +159,26 @@ public class SrsExportService {
                   }
                   .srs-ai-action { display: none !important; }
                   div[data-type="aiActionButton"] { display: none !important; }
+                  .cover-page-table {
+                    width: 100%;
+                    border: none;
+                    border-collapse: collapse;
+                  }
+                  .cover-page-table td {
+                    border: none;
+                    padding: 0;
+                    vertical-align: top;
+                  }
+                  .cover-page-table .cover-top td { vertical-align: top; text-align: center; }
+                  .cover-page-table .cover-middle td { vertical-align: middle; text-align: center; }
+                  .cover-page-table .cover-bottom td { vertical-align: bottom; text-align: center; }
                 </style>
                 </head>
                 <body>
-                %s
+                """ + processedHtml + """
                 </body>
                 </html>
-                """.formatted(processedHtml);
+                """;
 
         // Add BOM for proper Unicode handling in Word
         byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
@@ -175,5 +189,28 @@ public class SrsExportService {
 
         log.info("DOC generated successfully, size: {} bytes", result.length);
         return result;
+    }
+
+    /**
+     * Processes cover page HTML for Word compatibility.
+     * TipTap generates empty paragraph spacers between title and date — Word collapses these.
+     * This method fills empty paragraphs with &nbsp; so Word renders them with actual height,
+     * and converts <hr> tags to Word page breaks.
+     */
+    private String buildCoverPageLayout(String html) {
+        // Fill empty paragraphs with &nbsp; so Word renders them with height
+        // TipTap generates: <p></p> or <p style="..."></p>
+        String processed = html.replaceAll(
+                "<p([^>]*)>\\s*</p>",
+                "<p$1>&nbsp;</p>"
+        );
+
+        // Convert <hr> tags to Word-compatible page breaks
+        processed = processed.replaceAll(
+                "<hr\\s*/?>",
+                "<br clear='all' style='mso-special-character:line-break;page-break-before:always'>"
+        );
+
+        return processed;
     }
 }

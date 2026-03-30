@@ -349,4 +349,26 @@ public class SrsServiceImpl implements SrsService {
                                 .updatedAt(doc.getUpdatedAt())
                                 .build();
         }
+
+        @Override
+        @Transactional
+        public void deleteSrsVersion(Long srsId, Long projectId) {
+                SrsDocument doc = srsDocumentRepository.findById(srsId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy SRS version"));
+
+                if (!doc.getProject().getId().equals(projectId)) {
+                        throw new ForbiddenException("SRS không thuộc project này");
+                }
+
+                // Prevent deleting the latest version
+                SrsDocument latest = srsDocumentRepository.findFirstByProjectIdOrderByVersionNumberDesc(projectId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy SRS"));
+
+                if (latest.getId().equals(srsId)) {
+                        throw new com.trackspace.common.BadRequestException("Không thể xóa phiên bản mới nhất");
+                }
+
+                srsDocumentRepository.delete(doc);
+                log.info("Deleted SRS version {} (id={}) of project {}", doc.getVersionNumber(), srsId, projectId);
+        }
 }

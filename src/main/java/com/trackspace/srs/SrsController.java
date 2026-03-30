@@ -96,4 +96,14 @@ public class SrsController {
 
         return new ResponseEntity<>(data, headers, HttpStatus.OK);
     }
+
+    @DeleteMapping("/api/projects/{projectId}/srs/{srsId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'LECTURER', 'STUDENT')")
+    @Operation(summary = "Delete SRS version", description = "Deletes an old SRS version. Cannot delete the latest version.")
+    public ResponseEntity<ApiResponse<Void>> deleteSrsVersion(
+            @PathVariable("projectId") Long projectId,
+            @PathVariable("srsId") Long srsId) {
+        srsService.deleteSrsVersion(srsId, projectId);
+        return ResponseEntity.ok(ApiResponse.success("Xóa phiên bản SRS thành công", null));
+    }
 }
