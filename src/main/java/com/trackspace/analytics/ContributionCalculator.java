@@ -78,6 +78,20 @@ public class ContributionCalculator {
             r.codeScore = (r.codeRaw / maxCodeRaw) * 100.0;
         }
 
+        // Normalize task scores (0-100) relative to group max completed tasks
+        int maxCompleted = results.stream().mapToInt(r -> r.tasksCompleted).max().orElse(1);
+        if (maxCompleted <= 0) maxCompleted = 1;
+
+        for (MemberResult r : results) {
+            double baseTaskScore = ((double) r.tasksCompleted / maxCompleted) * 100.0;
+            double penalty = 0.0;
+            if (r.tasksAssigned > 0) {
+                double valuePerTask = 100.0 / r.tasksAssigned;
+                penalty = r.overdueCount * (valuePerTask * 0.5);
+            }
+            r.taskScore = Math.max(0.0, baseTaskScore - penalty);
+        }
+
         // Compute final scores and redistribute
         double totalFinal = 0.0;
         for (MemberResult r : results) {
@@ -240,17 +254,8 @@ public class ContributionCalculator {
         r.tasksCompleted = completed;
         r.tasksInProgress = inProgress;
         r.overdueCount = overdue;
-        
-        if (assigned > 0) {
-            double baseTaskScore = ((double) completed / assigned) * 100.0;
-            double valuePerTask = 100.0 / assigned;
-            double penalty = overdue * (valuePerTask * 0.5);
-            r.taskCompletionRate = baseTaskScore;
-            r.taskScore = Math.max(0.0, baseTaskScore - penalty);
-        } else {
-            r.taskCompletionRate = 0.0;
-            r.taskScore = 0.0;
-        }
+        r.taskCompletionRate = assigned > 0 ? ((double) completed / assigned) * 100.0 : 0.0;
+        // taskScore will be normalized after all members are computed (like codeScore)
 
         // ── Consistency score ──
         if (projectWeeks > 0) {

@@ -18,7 +18,7 @@ public final class MetricsCalculator {
     /** Markup / styling files: medium credit */
     public static final double WEIGHT_MEDIUM = 0.5;
     /** Config / documentation files: minimal credit */
-    public static final double WEIGHT_LOW = 0.1;
+    public static final double WEIGHT_LOW = 0.0;
     /** Generated / binary / library files: ignored */
     public static final double WEIGHT_NONE = 0.0;
 

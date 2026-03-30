@@ -46,7 +46,7 @@ public class ContributionController {
                     member of the project.  Persists results to the database.
 
                     V2 Score formula:
-                    - **Code Score (40%)**: Per-file weighted lines added (Logic=1.0, UI=0.5, Config=0.1),
+                    - **Code Score (40%)**: Per-file weighted lines added (Logic=1.0, UI=0.5, Config=0.0),
                       normalized against group maximum.
                     - **Task Score (40%)**: tasksCompleted / tasksAssigned (Jira).
                     - **Consistency Score (20%)**: activeDays / (projectWeeks × 3),
