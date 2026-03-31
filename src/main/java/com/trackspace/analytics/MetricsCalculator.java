@@ -15,8 +15,8 @@ public final class MetricsCalculator {
 
     /** Core logic files: maximum credit */
     public static final double WEIGHT_HIGH = 1.0;
-    /** Markup / styling files: medium credit */
-    public static final double WEIGHT_MEDIUM = 0.5;
+    /** Markup / styling files: excluded (FE line count bias) */
+    public static final double WEIGHT_MEDIUM = 0.0;
     /** Config / documentation files: minimal credit */
     public static final double WEIGHT_LOW = 0.0;
     /** Generated / binary / library files: ignored */

@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  *
  * - Code:        per-file weighted lines (sum of weightedLinesAdded per commit, skip merge)
  * - Task:        tasksCompleted / tasksAssigned
- * - Consistency: min(activeDays / (projectWeeks × 3), 1.0)
+ * - Consistency: normalized relative to group max (most active member = 100)
  */
 @Component
 @Slf4j
@@ -28,7 +28,7 @@ public class ContributionCalculator {
     private static final double CODE_WEIGHT = 0.4;
     private static final double TASK_WEIGHT = 0.4;
     private static final double CONSISTENCY_WEIGHT = 0.2;
-    private static final int EXPECTED_ACTIVE_DAYS_PER_WEEK = 3;
+
 
     /**
      * Main calculation entry point.
@@ -57,16 +57,13 @@ public class ContributionCalculator {
                 .filter(i -> i.getAssigneeId() != null)
                 .collect(Collectors.groupingBy(JiraIssue::getAssigneeId));
 
-        // Compute project-wide date range for consistency calculation
-        long projectWeeks = computeProjectWeeks(allCommits);
-
         // Compute intermediate results per member
         List<MemberResult> results = new ArrayList<>();
         for (Integer userId : memberUserIds) {
             List<Commit> userCommits = commitsByUser.getOrDefault(userId, Collections.emptyList());
             List<JiraIssue> userIssues = issuesByUser.getOrDefault(userId, Collections.emptyList());
 
-            MemberResult r = computeMember(userId, userCommits, userIssues, projectWeeks, connectionLabelMap);
+            MemberResult r = computeMember(userId, userCommits, userIssues, connectionLabelMap);
             results.add(r);
         }
 
@@ -90,6 +87,14 @@ public class ContributionCalculator {
                 penalty = r.overdueCount * (valuePerTask * 0.5);
             }
             r.taskScore = Math.max(0.0, baseTaskScore - penalty);
+        }
+
+        // Normalize consistency scores (0-100) relative to group max active days
+        int maxActiveDays = results.stream().mapToInt(r -> r.activeDays).max().orElse(1);
+        if (maxActiveDays <= 0) maxActiveDays = 1;
+
+        for (MemberResult r : results) {
+            r.consistencyScore = ((double) r.activeDays / maxActiveDays) * 100.0;
         }
 
         // Compute final scores and redistribute
@@ -154,7 +159,6 @@ public class ContributionCalculator {
             Integer userId,
             List<Commit> commits,
             List<JiraIssue> issues,
-            long projectWeeks,
             Map<Integer, String> connectionLabelMap) {
 
         MemberResult r = new MemberResult();
@@ -257,13 +261,8 @@ public class ContributionCalculator {
         r.taskCompletionRate = assigned > 0 ? ((double) completed / assigned) * 100.0 : 0.0;
         // taskScore will be normalized after all members are computed (like codeScore)
 
-        // ── Consistency score ──
-        if (projectWeeks > 0) {
-            double expectedDays = projectWeeks * EXPECTED_ACTIVE_DAYS_PER_WEEK;
-            r.consistencyScore = Math.min(r.activeDays / expectedDays, 1.0) * 100.0;
-        } else {
-            r.consistencyScore = r.activeDays > 0 ? 100.0 : 0.0;
-        }
+        // ── Consistency score (will be normalized after all members are computed) ──
+        // r.activeDays is already set above — normalization happens in calculate()
 
         return r;
     }
@@ -283,23 +282,7 @@ public class ContributionCalculator {
         return map;
     }
 
-    /**
-     * Computes project duration in weeks based on the earliest and latest commit dates.
-     * Minimum 1 week to avoid division by zero.
-     */
-    private long computeProjectWeeks(List<Commit> allCommits) {
-        Instant earliest = null;
-        Instant latest = null;
-        for (Commit c : allCommits) {
-            if (c.getCommitDate() == null) continue;
-            if (earliest == null || c.getCommitDate().isBefore(earliest)) earliest = c.getCommitDate();
-            if (latest == null || c.getCommitDate().isAfter(latest)) latest = c.getCommitDate();
-        }
-        if (earliest == null || latest == null) return 1;
-        long days = ChronoUnit.DAYS.between(earliest, latest);
-        long weeks = Math.max(1, days / 7);
-        return weeks;
-    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // Internal DTO
