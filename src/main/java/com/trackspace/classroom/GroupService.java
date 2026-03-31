@@ -2,6 +2,7 @@ package com.trackspace.classroom;
 
 import com.trackspace.common.BadRequestException;
 import com.trackspace.common.ResourceNotFoundException;
+import com.trackspace.project.ProjectRepository;
 import com.trackspace.user.User;
 import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class GroupService {
     private final ClassRepository classRepository;
     private final ClassStudentRepository classStudentRepository;
     private final UserRepository userRepository;
+    private final ProjectRepository projectRepository;
 
     private static final String GROUP_NOT_FOUND = "Không tìm thấy nhóm với ID: %d";
     private static final String CLASS_NOT_FOUND = "Không tìm thấy lớp học với ID: %d";
@@ -91,7 +93,13 @@ public class GroupService {
         Group group = findActiveGroupById(groupId);
         validateGroupBelongsToClass(group, classId);
 
-        // Leader info is tracked via group.teamLeader, no need to change user role
+        // Check group có project active không
+        var activeProject = projectRepository.findByGroupIdAndDeletedFalse(groupId);
+        if (activeProject.isPresent()) {
+            String projectName = activeProject.get().getProjectName();
+            throw new BadRequestException(
+                    "Không thể xóa nhóm \"" + group.getGroupName() + "\" vì đang có project \"" + projectName + "\". Hãy xóa project trước.");
+        }
 
         group.setActive(false);
         groupRepository.save(group);

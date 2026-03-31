@@ -1,5 +1,8 @@
 package com.trackspace.admin;
 
+import com.trackspace.classroom.ClassStudent;
+import com.trackspace.classroom.ClassStudentRepository;
+import com.trackspace.classroom.GroupMemberRepository;
 import com.trackspace.common.BadRequestException;
 import com.trackspace.common.ResourceNotFoundException;
 import com.trackspace.user.User;
@@ -22,6 +25,8 @@ public class AdminService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ClassStudentRepository classStudentRepository;
+    private final GroupMemberRepository groupMemberRepository;
 
     private static final String USER_NOT_FOUND_MESSAGE = "Không tìm thấy người dùng với ID: %d";
     private static final String ACCOUNT_CREATED_MESSAGE = "Tạo tài khoản thành công";
@@ -67,6 +72,19 @@ public class AdminService {
     @Transactional
     public UserResponse updateUserStatus(Long userId, Boolean active) {
         User user = findUserById(userId);
+
+        // Nếu deactivate, check có đang enrolled hoặc trong group không
+        if (Boolean.FALSE.equals(active)) {
+            List<ClassStudent> enrollments = classStudentRepository.findByStudentId(userId);
+            if (!enrollments.isEmpty()) {
+                String classNames = enrollments.stream()
+                        .map(cs -> cs.getClassroom().getClassCode())
+                        .collect(Collectors.joining(", "));
+                throw new BadRequestException(
+                        "Không thể vô hiệu hóa \"" + user.getFullName() + "\" vì đang đăng ký lớp: " + classNames + ". Hãy xóa khỏi lớp trước.");
+            }
+        }
+
         user.setActive(active);
         User updatedUser = userRepository.save(user);
         return buildUserResponse(updatedUser);
@@ -83,6 +101,17 @@ public class AdminService {
     public void deleteUser(Long userId) {
         User user = findUserById(userId);
         validateRoleNotAdmin(user.getRole());
+
+        // Check có đang enrolled trong lớp nào không
+        List<ClassStudent> enrollments = classStudentRepository.findByStudentId(userId);
+        if (!enrollments.isEmpty()) {
+            String classNames = enrollments.stream()
+                    .map(cs -> cs.getClassroom().getClassCode())
+                    .collect(Collectors.joining(", "));
+            throw new BadRequestException(
+                    "Không thể xóa \"" + user.getFullName() + "\" vì đang đăng ký lớp: " + classNames + ". Hãy xóa khỏi lớp trước.");
+        }
+
         userRepository.delete(user);
     }
 
@@ -104,6 +133,19 @@ public class AdminService {
 
         user.setFullName(request.getFullName());
         user.setEmail(request.getEmail());
+
+        // Block đổi role nếu đang enrolled
+        if (user.getRole() != request.getRole()) {
+            List<ClassStudent> enrollments = classStudentRepository.findByStudentId(userId);
+            if (!enrollments.isEmpty()) {
+                String classNames = enrollments.stream()
+                        .map(cs -> cs.getClassroom().getClassCode())
+                        .collect(Collectors.joining(", "));
+                throw new BadRequestException(
+                        "Không thể đổi vai trò của \"" + user.getFullName() + "\" vì đang đăng ký lớp: " + classNames);
+            }
+        }
+
         user.setRole(request.getRole());
         user.setStudentCode(request.getStudentCode());
 

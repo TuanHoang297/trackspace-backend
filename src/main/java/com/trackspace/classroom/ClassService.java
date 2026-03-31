@@ -2,6 +2,7 @@ package com.trackspace.classroom;
 
 import com.trackspace.common.BadRequestException;
 import com.trackspace.common.ResourceNotFoundException;
+import com.trackspace.project.ProjectRepository;
 import com.trackspace.user.User;
 import com.trackspace.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,8 @@ public class ClassService {
     private final ClassStudentRepository classStudentRepository;
     private final UserRepository userRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final GroupRepository groupRepository;
+    private final ProjectRepository projectRepository;
     private final SemesterRepository semesterRepository;
     private final SubjectRepository subjectRepository;
     private static final String CLASS_NOT_FOUND = "Không tìm thấy lớp học với ID: %d";
@@ -169,6 +172,20 @@ public class ClassService {
     @Transactional
     public void deleteClass(Long classId) {
         Class aClass = findActiveClassById(classId);
+
+        // Cascade soft-delete tất cả groups trong class
+        List<Group> activeGroups = groupRepository.findByClassroomIdAndActiveTrue(classId);
+        for (Group group : activeGroups) {
+            group.setActive(false);
+            // Cascade soft-delete project của group
+            projectRepository.findByGroupIdAndDeletedFalse(group.getId())
+                    .ifPresent(project -> {
+                        project.setDeleted(true);
+                        projectRepository.save(project);
+                    });
+        }
+        groupRepository.saveAll(activeGroups);
+
         aClass.setActive(false);
         classRepository.save(aClass);
     }
@@ -272,6 +289,16 @@ public class ClassService {
                 .findByClassroomIdAndStudentId(classId, studentId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Sinh viên không thuộc lớp học này"));
+
+        // Check sinh viên đang thuộc nhóm nào trong lớp
+        var membership = groupMemberRepository.findByClassIdAndMemberId(classId, studentId);
+        if (membership.isPresent()) {
+            String studentName = classStudent.getStudent().getFullName();
+            String groupName = membership.get().getGroup().getGroupName();
+            throw new BadRequestException(
+                    "Không thể xóa \"" + studentName + "\" khỏi lớp vì đang là thành viên nhóm \"" + groupName + "\". Hãy xóa khỏi nhóm trước.");
+        }
+
         classStudentRepository.delete(classStudent);
     }
 
