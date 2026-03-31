@@ -335,6 +335,27 @@ public class SrsServiceImpl implements SrsService {
                 }
         }
 
+        /**
+         * Checks if the current user is the team leader of the given project.
+         * ADMIN and LECTURER bypass this check.
+         */
+        private void checkProjectLeader(Project project) {
+                var currentUser = authService.getCurrentUser();
+                User.Role role = currentUser.getRole();
+                if (role == User.Role.ADMIN || role == User.Role.LECTURER) return;
+
+                // Ensure membership first
+                checkProjectAccess(project);
+
+                if (project.getGroup() != null && project.getGroup().getTeamLeader() != null) {
+                        if (!project.getGroup().getTeamLeader().getId().equals(currentUser.getId())) {
+                                throw new ForbiddenException("Chỉ Trưởng nhóm mới có quyền xóa phiên bản SRS");
+                        }
+                } else {
+                        throw new ForbiddenException("Nhóm chưa thiết lập Trưởng nhóm hoặc dự án không hợp lệ");
+                }
+        }
+
         // ==================== Helpers ====================
 
         private SrsDocumentResponse toResponse(SrsDocument doc) {
@@ -359,6 +380,8 @@ public class SrsServiceImpl implements SrsService {
                 if (!doc.getProject().getId().equals(projectId)) {
                         throw new ForbiddenException("SRS không thuộc project này");
                 }
+
+                checkProjectLeader(doc.getProject());
 
                 // Prevent deleting the latest version
                 SrsDocument latest = srsDocumentRepository.findFirstByProjectIdOrderByVersionNumberDesc(projectId)
