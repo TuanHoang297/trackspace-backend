@@ -208,6 +208,11 @@ public class JiraIssueServiceImpl implements JiraIssueService {
         issue.setStatus("To Do");
         issue.setPriority(request.getPriority());
         issue.setAssigneeId(request.getAssigneeId());
+        // Resolve assigneeName from userId so the response includes the member's display name
+        if (request.getAssigneeId() != null) {
+            userRepository.findById(request.getAssigneeId().longValue())
+                    .ifPresent(u -> issue.setAssigneeName(u.getFullName()));
+        }
         issue.setDueDate(request.getDueDate());
 
         JiraIssue saved = issueRepository.save(issue);
@@ -227,6 +232,34 @@ public class JiraIssueServiceImpl implements JiraIssueService {
                 } catch (Exception ex) {
                     log.warn("Issue created but failed to move to sprint: {}", ex.getMessage());
                 }
+            }
+        }
+
+        // Assign issue on Jira if assigneeId is provided
+        if (request.getAssigneeId() != null) {
+            try {
+                // Resolve user's full name from local DB
+                String fullName = issue.getAssigneeName();
+                if (fullName != null && !fullName.isBlank()) {
+                    // Fetch assignable users from Jira and match by displayName
+                    var jiraUsers = jiraApiClient.getAssignableUsers(
+                            connection.getSiteUrl(), connection.getEmail(),
+                            connection.getApiTokenEncrypted(), connection.getProjectKey());
+                    jiraUsers.stream()
+                            .filter(u -> fullName.trim().equalsIgnoreCase(u.getDisplayName() != null ? u.getDisplayName().trim() : ""))
+                            .findFirst()
+                            .ifPresent(matchedUser -> {
+                                jiraApiClient.assignIssueOnJira(
+                                        connection.getSiteUrl(), connection.getEmail(),
+                                        connection.getApiTokenEncrypted(),
+                                        jiraIssue.getKey(), matchedUser.getAccountId());
+                                saved.setJiraAccountId(matchedUser.getAccountId());
+                                issueRepository.save(saved);
+                                log.info("Assigned issue {} to {} on Jira", jiraIssue.getKey(), fullName);
+                            });
+                }
+            } catch (Exception ex) {
+                log.warn("Issue created but failed to assign on Jira: {}", ex.getMessage());
             }
         }
 
